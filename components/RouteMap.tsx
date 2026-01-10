@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
-import { MapContainer, TileLayer, Polyline, useMap } from 'react-leaflet'
+import { useEffect, useState, useRef } from 'react'
+import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import type { Route, Coordinate } from '@/types/route'
 
@@ -17,29 +17,168 @@ if (typeof window !== 'undefined') {
 
 interface RouteMapProps {
   routes?: Route[]
+  waypoints?: Coordinate[] // Original waypoints to display as markers
   center?: Coordinate
   zoom?: number
   onRouteClick?: (route: Route) => void
+  showWaypoints?: boolean // Toggle to show/hide waypoint markers
+  onWaypointMove?: (index: number, newPosition: Coordinate) => void // Callback when a waypoint is moved
 }
 
 /**
- * Component to handle map bounds updates when routes change
+ * Component to track Shift key state for draggable waypoints
  */
-function MapBoundsController({ routes }: { routes?: Route[] }) {
+function ShiftKeyTracker({ onShiftChange }: { onShiftChange: (isPressed: boolean) => void }) {
+  useMapEvents({
+    keydown: (e) => {
+      if (e.originalEvent.key === 'Shift') {
+        onShiftChange(true)
+      }
+    },
+    keyup: (e) => {
+      if (e.originalEvent.key === 'Shift') {
+        onShiftChange(false)
+      }
+    },
+  })
+  
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        onShiftChange(true)
+      }
+    }
+    
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        onShiftChange(false)
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
+  }, [onShiftChange])
+  
+  return null
+}
+
+/**
+ * Draggable waypoint marker component
+ */
+function DraggableWaypointMarker({
+  waypoint,
+  index,
+  isShiftPressed,
+  waypointIcon,
+  draggableWaypointIcon,
+  onWaypointMove,
+}: {
+  waypoint: Coordinate
+  index: number
+  isShiftPressed: boolean
+  waypointIcon: L.DivIcon
+  draggableWaypointIcon: L.DivIcon
+  onWaypointMove?: (index: number, newPosition: Coordinate) => void
+}) {
+  const [position, setPosition] = useState([waypoint.lat, waypoint.lng] as [number, number])
+  const markerRef = useRef<L.Marker>(null)
+  
+  // Update position when waypoint prop changes
+  useEffect(() => {
+    setPosition([waypoint.lat, waypoint.lng])
+  }, [waypoint])
+  
+  // Make marker draggable only when Shift is pressed
+  useEffect(() => {
+    const marker = markerRef.current
+    if (marker) {
+      if (isShiftPressed) {
+        marker.dragging?.enable()
+      } else {
+        marker.dragging?.disable()
+      }
+    }
+  }, [isShiftPressed])
+  
+  return (
+    <Marker
+      ref={markerRef}
+      position={position}
+      icon={isShiftPressed ? draggableWaypointIcon : waypointIcon}
+      draggable={isShiftPressed}
+      eventHandlers={{
+        dragend: (e) => {
+          const marker = e.target
+          if (marker) {
+            const newPosition = marker.getLatLng()
+            const newCoord: Coordinate = {
+              lat: newPosition.lat,
+              lng: newPosition.lng,
+            }
+            setPosition([newCoord.lat, newCoord.lng])
+            if (onWaypointMove) {
+              onWaypointMove(index, newCoord)
+            }
+          }
+        },
+      }}
+    >
+      <Popup>
+        <div style={{ textAlign: 'center' }}>
+          <strong>Waypoint {index + 1}</strong>
+          <br />
+          <small>
+            {position[0].toFixed(6)}, {position[1].toFixed(6)}
+          </small>
+          {isShiftPressed && (
+            <>
+              <br />
+              <small style={{ color: '#f59e0b', fontWeight: 'bold' }}>
+                Drag to move
+              </small>
+            </>
+          )}
+        </div>
+      </Popup>
+    </Marker>
+  )
+}
+
+/**
+ * Component to handle map bounds updates when routes or waypoints change
+ */
+function MapBoundsController({ routes, waypoints }: { routes?: Route[], waypoints?: Coordinate[] }) {
   const map = useMap()
 
   useEffect(() => {
+    const allCoordinates: [number, number][] = []
+    
+    // Add route coordinates
     if (routes && routes.length > 0) {
-      const allCoordinates: [number, number][] = routes.flatMap(route =>
-        route.coordinates.map(coord => [coord.lat, coord.lng] as [number, number])
-      )
-
-      if (allCoordinates.length > 0) {
-        const bounds = L.latLngBounds(allCoordinates)
-        map.fitBounds(bounds, { padding: [50, 50] })
-      }
+      routes.forEach(route => {
+        route.coordinates.forEach(coord => {
+          allCoordinates.push([coord.lat, coord.lng])
+        })
+      })
     }
-  }, [routes, map])
+    
+    // Add waypoint coordinates
+    if (waypoints && waypoints.length > 0) {
+      waypoints.forEach(waypoint => {
+        allCoordinates.push([waypoint.lat, waypoint.lng])
+      })
+    }
+
+    if (allCoordinates.length > 0) {
+      const bounds = L.latLngBounds(allCoordinates)
+      map.fitBounds(bounds, { padding: [50, 50] })
+    }
+  }, [routes, waypoints, map])
 
   return null
 }
@@ -60,16 +199,52 @@ function MapBoundsController({ routes }: { routes?: Route[] }) {
  */
 export default function RouteMap({
   routes = [],
+  waypoints = [],
   center = { lat: 34.0522, lng: -118.2437 }, // Los Angeles area - center of Southern California
   zoom = 10,
   onRouteClick,
+  showWaypoints = true,
+  onWaypointMove,
 }: RouteMapProps) {
+  const [isShiftPressed, setIsShiftPressed] = useState(false)
+  
   // Default route color and style
   const defaultRouteStyle = {
     color: '#3b82f6', // Blue
     weight: 5,
     opacity: 0.8,
   }
+
+  // Create custom icons for waypoints (normal and draggable states)
+  const waypointIcon = L.divIcon({
+    className: 'waypoint-marker',
+    html: `<div style="
+      width: 16px;
+      height: 16px;
+      background: #ef4444;
+      border: 3px solid white;
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      cursor: ${isShiftPressed ? 'move' : 'default'};
+    "></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  })
+
+  const draggableWaypointIcon = L.divIcon({
+    className: 'waypoint-marker-draggable',
+    html: `<div style="
+      width: 18px;
+      height: 18px;
+      background: #dc2626;
+      border: 3px solid #fbbf24;
+      border-radius: 50%;
+      box-shadow: 0 3px 6px rgba(0,0,0,0.4);
+      cursor: move;
+    "></div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+  })
 
   return (
     <MapContainer
@@ -82,6 +257,22 @@ export default function RouteMap({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      
+      {/* Track Shift key for draggable waypoints */}
+      <ShiftKeyTracker onShiftChange={setIsShiftPressed} />
+      
+      {/* Render waypoint markers */}
+      {showWaypoints && waypoints.map((waypoint, index) => (
+        <DraggableWaypointMarker
+          key={`waypoint-${index}`}
+          waypoint={waypoint}
+          index={index}
+          isShiftPressed={isShiftPressed}
+          waypointIcon={waypointIcon}
+          draggableWaypointIcon={draggableWaypointIcon}
+          onWaypointMove={onWaypointMove}
+        />
+      ))}
       
       {/* Render all routes as polylines */}
       {routes.map((route, index) => {
@@ -107,8 +298,10 @@ export default function RouteMap({
         )
       })}
 
-      {/* Auto-fit bounds when routes are provided */}
-      {routes && routes.length > 0 && <MapBoundsController routes={routes} />}
+      {/* Auto-fit bounds when routes or waypoints are provided */}
+      {(routes.length > 0 || waypoints.length > 0) && (
+        <MapBoundsController routes={routes} waypoints={waypoints} />
+      )}
     </MapContainer>
   )
 }
