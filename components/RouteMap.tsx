@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import type { Route, Coordinate } from '@/types/route'
 
@@ -22,50 +22,10 @@ interface RouteMapProps {
   zoom?: number
   onRouteClick?: (route: Route) => void
   showWaypoints?: boolean // Toggle to show/hide waypoint markers
+  draggableMode?: boolean // Enable/disable waypoint dragging
   onWaypointMove?: (index: number, newPosition: Coordinate) => void // Callback when a waypoint is moved
 }
 
-/**
- * Component to track Shift key state for draggable waypoints
- */
-function ShiftKeyTracker({ onShiftChange }: { onShiftChange: (isPressed: boolean) => void }) {
-  useMapEvents({
-    keydown: (e) => {
-      if (e.originalEvent.key === 'Shift') {
-        onShiftChange(true)
-      }
-    },
-    keyup: (e) => {
-      if (e.originalEvent.key === 'Shift') {
-        onShiftChange(false)
-      }
-    },
-  })
-  
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') {
-        onShiftChange(true)
-      }
-    }
-    
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') {
-        onShiftChange(false)
-      }
-    }
-    
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('keyup', handleKeyUp)
-    
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('keyup', handleKeyUp)
-    }
-  }, [onShiftChange])
-  
-  return null
-}
 
 /**
  * Draggable waypoint marker component
@@ -73,14 +33,14 @@ function ShiftKeyTracker({ onShiftChange }: { onShiftChange: (isPressed: boolean
 function DraggableWaypointMarker({
   waypoint,
   index,
-  isShiftPressed,
+  draggableMode,
   waypointIcon,
   draggableWaypointIcon,
   onWaypointMove,
 }: {
   waypoint: Coordinate
   index: number
-  isShiftPressed: boolean
+  draggableMode: boolean
   waypointIcon: L.DivIcon
   draggableWaypointIcon: L.DivIcon
   onWaypointMove?: (index: number, newPosition: Coordinate) => void
@@ -93,24 +53,24 @@ function DraggableWaypointMarker({
     setPosition([waypoint.lat, waypoint.lng])
   }, [waypoint])
   
-  // Make marker draggable only when Shift is pressed
+  // Make marker draggable based on draggableMode prop
   useEffect(() => {
     const marker = markerRef.current
     if (marker) {
-      if (isShiftPressed) {
+      if (draggableMode) {
         marker.dragging?.enable()
       } else {
         marker.dragging?.disable()
       }
     }
-  }, [isShiftPressed])
+  }, [draggableMode])
   
   return (
     <Marker
       ref={markerRef}
       position={position}
-      icon={isShiftPressed ? draggableWaypointIcon : waypointIcon}
-      draggable={isShiftPressed}
+              icon={draggableMode ? draggableWaypointIcon : waypointIcon}
+              draggable={draggableMode}
       eventHandlers={{
         dragend: (e) => {
           const marker = e.target
@@ -135,7 +95,7 @@ function DraggableWaypointMarker({
           <small>
             {position[0].toFixed(6)}, {position[1].toFixed(6)}
           </small>
-          {isShiftPressed && (
+          {draggableMode && (
             <>
               <br />
               <small style={{ color: '#f59e0b', fontWeight: 'bold' }}>
@@ -204,9 +164,9 @@ export default function RouteMap({
   zoom = 10,
   onRouteClick,
   showWaypoints = true,
+  draggableMode = false,
   onWaypointMove,
 }: RouteMapProps) {
-  const [isShiftPressed, setIsShiftPressed] = useState(false)
   
   // Default route color and style
   const defaultRouteStyle = {
@@ -225,7 +185,7 @@ export default function RouteMap({
       border: 3px solid white;
       border-radius: 50%;
       box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-      cursor: ${isShiftPressed ? 'move' : 'default'};
+      cursor: move;
     "></div>`,
     iconSize: [16, 16],
     iconAnchor: [8, 8],
@@ -258,16 +218,13 @@ export default function RouteMap({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       
-      {/* Track Shift key for draggable waypoints */}
-      <ShiftKeyTracker onShiftChange={setIsShiftPressed} />
-      
       {/* Render waypoint markers */}
       {showWaypoints && waypoints.map((waypoint, index) => (
         <DraggableWaypointMarker
           key={`waypoint-${index}`}
           waypoint={waypoint}
           index={index}
-          isShiftPressed={isShiftPressed}
+          draggableMode={draggableMode}
           waypointIcon={waypointIcon}
           draggableWaypointIcon={draggableWaypointIcon}
           onWaypointMove={onWaypointMove}

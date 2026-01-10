@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import type { Route, Coordinate } from '@/types/route'
-import { snapToRoads } from '@/utils/routeHelpers'
+import { snapToRoads, snapToNearestRoad, snapMultipleToNearestRoad } from '@/utils/routeHelpers'
 
 // Dynamically import the map component to avoid SSR issues with Leaflet
 const RouteMap = dynamic(() => import('@/components/RouteMap'), {
@@ -62,11 +62,28 @@ export default function Home() {
   const [isSnapping, setIsSnapping] = useState(false)
   const [showWaypoints, setShowWaypoints] = useState(true)
   const [waypoints, setWaypoints] = useState<Coordinate[]>(exampleRoute.coordinates)
+  const [draggableMode, setDraggableMode] = useState(false)
   
-  // Update waypoints when example route changes
+  // Update waypoints when example route changes and snap them to intersections
   useEffect(() => {
     if (showExample) {
-      setWaypoints(exampleRoute.coordinates)
+      // Use batch snapping for better performance
+      const snapWaypoints = async () => {
+        const snappedWaypoints = await snapMultipleToNearestRoad(
+          exampleRoute.coordinates,
+          'walking',
+          10 // Process 10 waypoints at a time
+        )
+        setWaypoints(snappedWaypoints)
+        
+        // Update the route with snapped waypoints
+        const updatedRoute: Route = {
+          ...exampleRoute,
+          coordinates: snappedWaypoints,
+        }
+        setRoutes([updatedRoute])
+      }
+      snapWaypoints()
     }
   }, [showExample])
 
@@ -87,36 +104,62 @@ export default function Home() {
     setShowExample(!showExample)
   }
 
+  // Debounce timer for waypoint moves to avoid excessive API calls
+  const waypointMoveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   const handleWaypointMove = async (index: number, newPosition: Coordinate) => {
-    // Update the waypoint position
+    // Clear any pending snap operation
+    if (waypointMoveTimeoutRef.current) {
+      clearTimeout(waypointMoveTimeoutRef.current)
+    }
+    
+    // Update waypoint position immediately for responsive UI
     const updatedWaypoints = [...waypoints]
     updatedWaypoints[index] = newPosition
     setWaypoints(updatedWaypoints)
     
-    // If route is snapped to roads, re-route with new waypoints
-    if (isSnappedToRoads) {
-      setIsSnapping(true)
-      try {
-        const snappedCoords = await snapToRoads(updatedWaypoints, 'walking')
-        const snappedRoute: Route = {
-          ...exampleRoute,
-          coordinates: snappedCoords,
-          name: exampleRoute.name + ' (Road-Aligned)',
-        }
-        setRoutes([snappedRoute])
-      } catch (error) {
-        console.error('Failed to re-route:', error)
-      } finally {
-        setIsSnapping(false)
-      }
-    } else {
-      // Update route with new waypoints (straight lines)
-      const updatedRoute: Route = {
-        ...exampleRoute,
-        coordinates: updatedWaypoints,
-      }
-      setRoutes([updatedRoute])
+    // Update route immediately with new position (straight line)
+    const updatedRoute: Route = {
+      ...exampleRoute,
+      coordinates: updatedWaypoints,
     }
+    setRoutes([updatedRoute])
+    
+    // Debounce the snapping and re-routing (wait 300ms after last move)
+    waypointMoveTimeoutRef.current = setTimeout(async () => {
+      // Snap the waypoint to the nearest road intersection
+      const snappedPosition = await snapToNearestRoad(newPosition, 'walking', true)
+      
+      // Update with snapped position
+      const finalWaypoints = [...waypoints]
+      finalWaypoints[index] = snappedPosition
+      setWaypoints(finalWaypoints)
+      
+      // If route is snapped to roads, re-route with snapped waypoints
+      if (isSnappedToRoads) {
+        setIsSnapping(true)
+        try {
+          const snappedCoords = await snapToRoads(finalWaypoints, 'walking')
+          const snappedRoute: Route = {
+            ...exampleRoute,
+            coordinates: snappedCoords,
+            name: exampleRoute.name + ' (Road-Aligned)',
+          }
+          setRoutes([snappedRoute])
+        } catch (error) {
+          console.error('Failed to re-route:', error)
+        } finally {
+          setIsSnapping(false)
+        }
+      } else {
+        // Update route with snapped waypoints (straight lines)
+        const finalRoute: Route = {
+          ...exampleRoute,
+          coordinates: finalWaypoints,
+        }
+        setRoutes([finalRoute])
+      }
+    }, 300) // 300ms debounce
   }
 
   const toggleRoadSnapping = async () => {
@@ -258,6 +301,34 @@ export default function Home() {
                 >
                   {showWaypoints ? 'Hide Waypoints' : 'Show Waypoints'}
                 </button>
+                <button
+                  onClick={() => setDraggableMode(!draggableMode)}
+                  disabled={!showWaypoints}
+                  style={{
+                    padding: '8px 16px',
+                    background: draggableMode ? '#f59e0b' : '#9ca3af',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: !showWaypoints ? 'not-allowed' : 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    transition: 'background-color 0.2s',
+                    opacity: !showWaypoints ? 0.5 : 1,
+                  }}
+                  onMouseOver={(e) => {
+                    if (showWaypoints) {
+                      e.currentTarget.style.background = draggableMode ? '#d97706' : '#6b7280'
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (showWaypoints) {
+                      e.currentTarget.style.background = draggableMode ? '#f59e0b' : '#9ca3af'
+                    }
+                  }}
+                >
+                  {draggableMode ? 'Stop Moving Points' : 'Move Points'}
+                </button>
               </>
             )}
             <div style={{
@@ -282,6 +353,7 @@ export default function Home() {
           zoom={10}
           onRouteClick={handleRouteClick}
           showWaypoints={showWaypoints}
+          draggableMode={draggableMode && showWaypoints}
           onWaypointMove={handleWaypointMove}
         />
       </div>
@@ -306,7 +378,7 @@ export default function Home() {
             <span style={{ fontWeight: '500' }}>Region:</span> Southern California
           </div>
           <div>
-            Click on a route to interact • Use mouse wheel to zoom • Drag to pan • Hold Shift and drag waypoints to move them
+            Click on a route to interact • Use mouse wheel to zoom • Drag to pan • Click "Move Points" to drag waypoints
           </div>
         </div>
       </div>

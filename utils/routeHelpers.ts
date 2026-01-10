@@ -1,5 +1,9 @@
 import type { Route, Coordinate } from '@/types/route'
 
+// OSRM server configuration
+// Using custom VPS instance for Southern California area
+const OSRM_BASE_URL = 'http://178.128.70.119:5000'
+
 /**
  * Creates a route object with default styling
  */
@@ -36,6 +40,149 @@ function distance(coord1: Coordinate, coord2: Coordinate): number {
     Math.sin(dLng / 2) * Math.sin(dLng / 2)
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   return R * c
+}
+
+// Cache for snapped coordinates to avoid redundant API calls
+const snapCache = new Map<string, Coordinate>()
+
+/**
+ * Generates a cache key for a coordinate
+ */
+function getCacheKey(coord: Coordinate, profile: string): string {
+  // Round to 5 decimal places (~1 meter precision) for cache key
+  const lat = Math.round(coord.lat * 100000) / 100000
+  const lng = Math.round(coord.lng * 100000) / 100000
+  return `${profile}_${lat}_${lng}`
+}
+
+/**
+ * Checks if a coordinate is already close to a road (within ~10 meters)
+ * If so, we can skip snapping to save API calls
+ */
+function isCloseToRoad(coord: Coordinate, snapped: Coordinate): boolean {
+  const dist = distance(coord, snapped)
+  return dist < 0.01 // 10 meters
+}
+
+/**
+ * Snaps a coordinate to the nearest point on the road network using OSRM's nearest service
+ * This finds the closest intersection or road point, making waypoints align with actual roads
+ * 
+ * Optimizations:
+ * - Caching to avoid redundant API calls
+ * - Skip snapping if already close to road
+ * 
+ * @param coordinate - The coordinate to snap
+ * @param profile - OSRM profile to use ('driving', 'walking', 'cycling'). Defaults to 'walking'
+ * @param useCache - Whether to use cached results (default: true)
+ * @returns Promise resolving to the snapped coordinate, or original coordinate if snapping fails
+ */
+export async function snapToNearestRoad(
+  coordinate: Coordinate,
+  profile: 'driving' | 'walking' | 'cycling' = 'walking',
+  useCache: boolean = true
+): Promise<Coordinate> {
+  // Check cache first
+  if (useCache) {
+    const cacheKey = getCacheKey(coordinate, profile)
+    const cached = snapCache.get(cacheKey)
+    if (cached) {
+      return cached
+    }
+  }
+  
+  try {
+    const osrmUrl = `${OSRM_BASE_URL}/nearest/v1/${profile}/${coordinate.lng},${coordinate.lat}?number=1`
+    
+    const response = await fetch(osrmUrl)
+    
+    if (!response.ok) {
+      // If nearest service fails, return original coordinate
+      if (response.status === 429) {
+        console.warn('OSRM rate limit reached, returning original coordinate')
+      } else {
+        console.warn(`OSRM nearest API error (${response.status}): ${response.statusText}`)
+      }
+      return coordinate
+    }
+    
+    const data = await response.json()
+    console.log(data);
+    
+    if (data.code !== 'Ok' || !data.waypoints || data.waypoints.length === 0) {
+      console.warn('OSRM nearest service failed, returning original coordinate')
+      return coordinate
+    }
+    
+    // Extract the snapped coordinate from the nearest waypoint
+    const snappedWaypoint = data.waypoints[0]
+    if (snappedWaypoint.location) {
+      // OSRM returns coordinates as [lng, lat]
+      const snapped: Coordinate = {
+        lat: snappedWaypoint.location[1],
+        lng: snappedWaypoint.location[0],
+      }
+      
+      // Cache the result
+      if (useCache) {
+        const cacheKey = getCacheKey(coordinate, profile)
+        snapCache.set(cacheKey, snapped)
+        
+      // Limit cache size to prevent memory issues (keep last 1000 entries)
+      if (snapCache.size > 1000) {
+        const firstKey = snapCache.keys().next().value
+        if (firstKey) {
+          snapCache.delete(firstKey)
+        }
+      }
+      }
+      
+      // If already very close to road, return original to avoid unnecessary movement
+      if (isCloseToRoad(coordinate, snapped)) {
+        return coordinate
+      }
+      
+      return snapped
+    }
+    
+    return coordinate
+  } catch (error) {
+    console.error('Error snapping to nearest road:', error)
+    return coordinate
+  }
+}
+
+/**
+ * Snaps multiple coordinates to nearest roads in parallel
+ * More efficient than calling snapToNearestRoad multiple times
+ * 
+ * @param coordinates - Array of coordinates to snap
+ * @param profile - OSRM profile to use
+ * @param batchSize - Number of coordinates to process in parallel (default: 10)
+ * @returns Promise resolving to array of snapped coordinates
+ */
+export async function snapMultipleToNearestRoad(
+  coordinates: Coordinate[],
+  profile: 'driving' | 'walking' | 'cycling' = 'walking',
+  batchSize: number = 10
+): Promise<Coordinate[]> {
+  // Process in batches to avoid overwhelming the API
+  const results: Coordinate[] = []
+  
+  for (let i = 0; i < coordinates.length; i += batchSize) {
+    const batch = coordinates.slice(i, i + batchSize)
+    const batchResults = await Promise.all(
+      batch.map(coord => snapToNearestRoad(coord, profile, true))
+    )
+    results.push(...batchResults)
+    
+    // Small delay between batches to avoid rate limiting (only if not last batch)
+    if (i + batchSize < coordinates.length) {
+      await new Promise(resolve => setTimeout(resolve, 50)) // Reduced from 100ms
+    }
+  }
+  
+  return results
 }
 
 /**
@@ -176,7 +323,7 @@ async function routeBetweenPoints(
     const overview = preferStraight ? 'simplified' : 'full' // Simplified gives fewer points, more direct
     const steps = avoidHighways ? 'true' : 'false' // Need steps to check for highways
     
-    const osrmUrl = `https://router.project-osrm.org/route/v1/${profile}/${waypoints}?overview=${overview}&geometries=geojson&steps=${steps}${alternatives}`
+    const osrmUrl = `${OSRM_BASE_URL}/route/v1/${profile}/${waypoints}?overview=${overview}&geometries=geojson&steps=${steps}${alternatives}`
     
     const response = await fetch(osrmUrl)
     
@@ -282,7 +429,7 @@ export async function snapToRoads(
       // Use simplified overview and request alternatives for straighter paths
       // Request steps if we need to check for highways
       const steps = avoidHighways ? 'true' : 'false'
-      const osrmUrl = `https://router.project-osrm.org/route/v1/${profile}/${waypoints}?overview=simplified&geometries=geojson&steps=${steps}&alternatives=3`
+      const osrmUrl = `${OSRM_BASE_URL}/route/v1/${profile}/${waypoints}?overview=simplified&geometries=geojson&steps=${steps}&alternatives=3`
       
       const response = await fetch(osrmUrl)
       
@@ -409,9 +556,10 @@ export async function snapToRoads(
             consecutiveFailures++
           }
           
-          // Add a small delay to avoid rate limiting (only between segments, not for last one)
-          if (j < waypoints.length - 2) {
-            await new Promise(resolve => setTimeout(resolve, 100))
+          // Reduced delay to avoid rate limiting (only between segments, not for last one)
+          // Only add delay if we're making multiple requests in quick succession
+          if (j < waypoints.length - 2 && waypoints.length > 2) {
+            await new Promise(resolve => setTimeout(resolve, 50)) // Reduced from 100ms
           }
         } catch (error) {
           console.warn(`Error routing segment ${j}:`, error)
@@ -430,9 +578,10 @@ export async function snapToRoads(
         }
       }
       
-      // Small delay between polygon edges
-      if (i < coordinates.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 100))
+      // Reduced delay between polygon edges to speed up routing
+      // Only delay if we have many edges to process
+      if (i < coordinates.length - 1 && coordinates.length > 3) {
+        await new Promise(resolve => setTimeout(resolve, 50)) // Reduced from 100ms
       }
     }
     
