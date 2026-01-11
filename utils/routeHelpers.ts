@@ -84,16 +84,21 @@ function perpendicularDistance(
 }
 
 /**
- * Smooths a path by removing small protrusions and unnecessary points
- * Removes points that create small deviations from the overall path direction
+ * Smooths a path by removing points that create sharp angles and preferring straight lines
+ * More aggressive smoothing that:
+ * - Removes points with sharp angles (< 135 degrees = sharp turn)
+ * - Prefers straight lines by removing points with small perpendicular deviation
+ * - Uses a combined score to decide which points to keep
  * 
  * @param coordinates - Array of coordinates to smooth
- * @param maxDeviation - Maximum allowed deviation in km before removing a point (default: 0.02km = 20m)
+ * @param maxDeviation - Maximum allowed deviation in km before removing a point (default: 0.03km = 30m)
+ * @param minAngle - Minimum angle (in degrees) to keep a point - lower values remove more sharp points (default: 135°)
  * @returns Smoothed array of coordinates
  */
 function smoothPath(
   coordinates: Coordinate[],
-  maxDeviation: number = 0.02 // 20 meters
+  maxDeviation: number = 0.03, // 30 meters - increased for better straight line preference
+  minAngle: number = 135 // 135 degrees - removes points creating angles sharper than this
 ): Coordinate[] {
   if (coordinates.length <= 2) {
     return coordinates
@@ -107,21 +112,28 @@ function smoothPath(
     const next = coordinates[i + 1]
     
     // Calculate perpendicular distance from current point to line from prev to next
+    // This measures how much the point deviates from a straight line
     const deviation = perpendicularDistance(current, prev, next)
     
-    // If deviation is small, skip this point (it's a small protrusion)
-    if (deviation < maxDeviation) {
-      continue
-    }
-    
-    // Check if the angle is too sharp (indicates a protrusion)
+    // Calculate the angle at the current point (angle between prev->current and current->next)
     const angle = calculateAngle(prev, current, next)
     
-    // If angle is very sharp (< 30 degrees) and deviation is small, it's likely a protrusion
-    if (angle < 30 && deviation < maxDeviation * 2) {
+    // Prefer straight lines: remove points with small deviation (they're close to the straight line)
+    const isNearlyStraight = deviation < maxDeviation
+    
+    // Avoid sharp points: remove points that create sharp angles
+    // Lower angles = sharper turns (0° = 180° turn, 180° = straight line)
+    const isSharpPoint = angle < minAngle
+    
+    // Remove the point if:
+    // 1. It's nearly on a straight line (small deviation) OR
+    // 2. It creates a sharp angle (sharp turn)
+    // This prefers straight lines and avoids sharp points
+    if (isNearlyStraight || isSharpPoint) {
       continue
     }
     
+    // Keep the point - it contributes to a smooth, non-straight path (like a gentle curve)
     smoothed.push(current)
   }
   
@@ -129,6 +141,238 @@ function smoothPath(
   smoothed.push(coordinates[coordinates.length - 1])
   
   return smoothed
+}
+
+/**
+ * Checks if two coordinates are close enough to be considered the same point
+ * Used to detect when the route loops back to a previously visited location
+ */
+function areCoordinatesClose(coord1: Coordinate, coord2: Coordinate, threshold: number = 0.001): boolean {
+  // threshold is in degrees, ~0.001 degrees ≈ 111 meters
+  return Math.abs(coord1.lat - coord2.lat) < threshold && Math.abs(coord1.lng - coord2.lng) < threshold
+}
+
+/**
+ * Removes redundant loops where the path leads back to itself without progressing
+ * Detects when a coordinate appears multiple times and removes the redundant cycle
+ * 
+ * @param coordinates - Array of coordinates representing the route
+ * @param threshold - Distance threshold for considering coordinates the same (in degrees, default: 0.001 ≈ 111m)
+ * @returns Array of coordinates with redundant loops removed
+ */
+function removeRedundantLoops(
+  coordinates: Coordinate[],
+  threshold: number = 0.001 // ~111 meters
+): Coordinate[] {
+  if (coordinates.length <= 2) {
+    return coordinates
+  }
+
+  const cleaned: Coordinate[] = []
+  const visitedIndices = new Map<string, number>() // Map coordinate key to first occurrence index
+  
+  for (let i = 0; i < coordinates.length; i++) {
+    const current = coordinates[i]
+    const coordKey = `${Math.round(current.lat / threshold)}_${Math.round(current.lng / threshold)}`
+    
+    // Check if we've seen a coordinate close to this one before
+    let isRedundantLoop = false
+    for (const [key, firstIndex] of visitedIndices.entries()) {
+      const [firstLat, firstLng] = key.split('_').map(Number)
+      const prevCoord: Coordinate = {
+        lat: firstLat * threshold,
+        lng: firstLng * threshold,
+      }
+      
+      if (areCoordinatesClose(current, prevCoord, threshold)) {
+        // Found a loop - check if removing it would be beneficial
+        // Remove the segment from firstIndex+1 to i-1 (the loop segment)
+        isRedundantLoop = true
+        break
+      }
+    }
+    
+    if (!isRedundantLoop) {
+      // Add coordinate to cleaned route
+      cleaned.push(current)
+      
+      // Record this coordinate as visited
+      visitedIndices.set(coordKey, cleaned.length - 1)
+    } else {
+      // Skip this coordinate (it's part of a redundant loop)
+      // The coordinate at firstIndex is already in cleaned, so we just skip the loop
+    }
+  }
+  
+  return cleaned.length >= 2 ? cleaned : coordinates
+}
+
+/**
+ * Advanced loop removal that detects cycles more intelligently
+ * Looks for sequences where the route returns to a previously visited point
+ * and removes the redundant cycle segment by merging the edges
+ */
+function mergeRedundantEdges(
+  coordinates: Coordinate[],
+  threshold: number = 0.001 // ~111 meters
+): Coordinate[] {
+  if (coordinates.length <= 3) {
+    return coordinates
+  }
+
+  const coordinateHash = (coord: Coordinate): string => {
+    // Create a hash key by rounding coordinates to threshold precision
+    return `${Math.round(coord.lat / threshold)}_${Math.round(coord.lng / threshold)}`
+  }
+  
+  // Track the last occurrence index in the result array for each coordinate hash
+  const lastOccurrenceInResult = new Map<string, number>()
+  const result: Coordinate[] = []
+  
+  for (let i = 0; i < coordinates.length; i++) {
+    const current = coordinates[i]
+    const key = coordinateHash(current)
+    
+    // Special case: Check for length-2 cycles (A -> B -> A pattern)
+    // This happens when current matches the point 2 positions back
+    if (result.length >= 2) {
+      const twoBack = result[result.length - 2]
+      if (areCoordinatesClose(current, twoBack, threshold)) {
+        // Found a length-2 cycle: remove the middle point (the point we just added)
+        const removedPoint = result.pop()! // Remove the middle point (B in A -> B -> A)
+        // Don't add current (A) again since twoBack (A) is already in result
+        // Update the map: remove the removed point's entry and update twoBack's entry
+        const removedKey = coordinateHash(removedPoint)
+        lastOccurrenceInResult.delete(removedKey)
+        const twoBackKey = coordinateHash(twoBack)
+        lastOccurrenceInResult.set(twoBackKey, result.length - 1) // twoBack is now at the end
+        continue
+      }
+    }
+    
+    if (lastOccurrenceInResult.has(key)) {
+      // We've seen this coordinate before in the result
+      const prevResultIndex = lastOccurrenceInResult.get(key)!
+      
+      // Check if removing the loop segment makes sense
+      // Calculate progress: distance from loop start to route end vs distance from loop end to route end
+      const routeEnd = coordinates[coordinates.length - 1]
+      const loopStartCoord = result[prevResultIndex]
+      const distFromLoopStart = distance(loopStartCoord, routeEnd)
+      const distFromLoopEnd = distance(current, routeEnd)
+      
+      // If we're not significantly closer to the end after the loop, the loop is redundant
+      // Allow 5% tolerance to account for measurement errors
+      if (distFromLoopEnd >= distFromLoopStart * 0.95) {
+        // Remove the redundant loop segment from result
+        // Remove all points between prevResultIndex+1 and the end of result
+        // This merges the edges by removing the loop
+        result.splice(prevResultIndex + 1)
+        
+        // Update the lastOccurrence map to remove entries for deleted points
+        // We need to rebuild the map for remaining points
+        lastOccurrenceInResult.clear()
+        for (let j = 0; j < result.length; j++) {
+          const coordKey = coordinateHash(result[j])
+          lastOccurrenceInResult.set(coordKey, j)
+        }
+        
+        // Continue from this point (don't add current again, we're merging with prevResultIndex)
+        // But we need to update the map to point to the merged location
+        lastOccurrenceInResult.set(key, prevResultIndex)
+        continue
+      }
+    }
+    
+    // Add coordinate to result
+    result.push(current)
+    lastOccurrenceInResult.set(key, result.length - 1)
+  }
+  
+  // Ensure we always have at least the start and end points
+  if (result.length < 2) {
+    return coordinates
+  }
+  
+  // Make sure the last point is preserved (if it's not already there)
+  const lastOriginal = coordinates[coordinates.length - 1]
+  const lastResult = result[result.length - 1]
+  if (!areCoordinatesClose(lastResult, lastOriginal, threshold)) {
+    result.push(lastOriginal)
+  }
+  
+  return result
+}
+
+/**
+ * Calculates bearing (direction) from coord1 to coord2 in degrees
+ * 0° = North, 90° = East, 180° = South, 270° = West
+ */
+function calculateBearing(coord1: Coordinate, coord2: Coordinate): number {
+  const lat1 = coord1.lat * Math.PI / 180
+  const lat2 = coord2.lat * Math.PI / 180
+  const dLng = (coord2.lng - coord1.lng) * Math.PI / 180
+  
+  const y = Math.sin(dLng) * Math.cos(lat2)
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
+  
+  const bearing = Math.atan2(y, x) * 180 / Math.PI
+  return (bearing + 360) % 360 // Normalize to 0-360
+}
+
+/**
+ * Removes points that have edges with bearing difference of ~180 degrees (backtracking)
+ * Single pass filter that removes points where the incoming and outgoing edges
+ * are nearly opposite directions, indicating a backtrack pattern
+ * 
+ * @param coordinates - Array of coordinates representing the route
+ * @param tolerance - Tolerance in degrees for 180-degree check (default: 20 degrees, so 160-200 degrees range)
+ * @returns Array of coordinates with backtracking points removed
+ */
+function removeBacktrackPoints(coordinates: Coordinate[], tolerance: number = 20): Coordinate[] {
+  if (coordinates.length <= 3) {
+    // Need at least 3 points to check bearing difference
+    return coordinates
+  }
+
+  const result: Coordinate[] = [coordinates[0]] // Always keep first point
+  
+  // Check each middle point (skip first and last)
+  for (let i = 1; i < coordinates.length - 1; i++) {
+    const prev = coordinates[i - 1]
+    const current = coordinates[i]
+    const next = coordinates[i + 1]
+    
+    // Calculate bearings for the two edges
+    const bearingIn = calculateBearing(prev, current) // Bearing of incoming edge
+    const bearingOut = calculateBearing(current, next) // Bearing of outgoing edge
+    
+    // Calculate the absolute difference in bearings
+    let bearingDiff = Math.abs(bearingOut - bearingIn)
+    
+    // Account for wrapping around 360 degrees (e.g., 350° and 10° difference is 20°, not 340°)
+    if (bearingDiff > 180) {
+      bearingDiff = 360 - bearingDiff
+    }
+    
+    // Check if the bearing difference is approximately 180 degrees (backtracking)
+    // Allow tolerance on both sides of 180 degrees
+    const minBacktrackAngle = 180 - tolerance
+    const maxBacktrackAngle = 180 + tolerance
+    
+    if (bearingDiff >= minBacktrackAngle && bearingDiff <= maxBacktrackAngle) {
+      // This point creates a backtrack - skip it
+      continue
+    }
+    
+    // Keep the point - it doesn't create a backtrack
+    result.push(current)
+  }
+  
+  // Always keep last point (target)
+  result.push(coordinates[coordinates.length - 1])
+  
+  return result.length >= 2 ? result : coordinates
 }
 
 /**
@@ -315,7 +559,7 @@ export async function snapMultipleToNearestRoad(
 function addIntermediatePoints(
   start: Coordinate,
   end: Coordinate,
-  maxSegmentLength: number = 0.1
+  maxSegmentLength: number = 0.4
 ): Coordinate[] {
   const dist = distance(start, end)
   if (dist <= maxSegmentLength) {
@@ -359,22 +603,30 @@ function calculateStraightness(route: Coordinate[], start: Coordinate, end: Coor
 }
 
 /**
- * Checks if a route contains highways by examining route steps
+ * Calculates the proportion of highway distance in a route (0.0 to 1.0)
+ * Returns the fraction of the route that uses highways
  * Highways include: motorway, motorway_link, trunk, trunk_link
  * Also checks for common highway indicators in road names
  */
-function routeContainsHighways(route: {
+function calculateHighwayProportion(route: {
+  distance?: number
   legs?: Array<{
     steps?: Array<{
+      distance?: number
       name?: string
       driving_side?: string
       mode?: string
       ref?: string
     }>
   }>
-}): boolean {
+}): number {
   if (!route.legs || !Array.isArray(route.legs)) {
-    return false // Can't determine without steps
+    return 0 // Can't determine without steps, assume no highways
+  }
+  
+  const totalDistance = route.distance || 0
+  if (totalDistance === 0) {
+    return 0
   }
   
   // Highway type keywords
@@ -386,50 +638,143 @@ function routeContainsHighways(route: {
     'state route', 'sr-', 'parkway', 'expressway', 'turnpike'
   ]
   
+  let highwayDistance = 0
+  
   for (const leg of route.legs) {
     if (leg.steps && Array.isArray(leg.steps)) {
       for (const step of leg.steps) {
         const name = (step.name || '').toLowerCase()
         const ref = (step.ref || '').toLowerCase()
         const combined = `${name} ${ref}`
+        const stepDistance = step.distance || 0
+        
+        // Check if this step is on a highway
+        let isHighway = false
         
         // Check for highway type keywords
         if (highwayTypes.some(type => combined.includes(type))) {
-          return true
+          isHighway = true
         }
         
         // Check for highway indicators in names/refs
         // Interstate highways (I-5, I-10, etc.)
         if (/^i-?\d+/.test(ref) || /^i-?\d+/.test(name)) {
-          return true
+          isHighway = true
         }
         
         // US highways (US-101, US 101, etc.)
         if (/^us-?\d+/.test(ref) || /^us-?\d+/.test(name)) {
-          return true
+          isHighway = true
         }
         
         // Check for other highway indicators
         if (highwayIndicators.some(indicator => combined.includes(indicator))) {
-          return true
+          isHighway = true
+        }
+        
+        if (isHighway) {
+          highwayDistance += stepDistance
         }
       }
     }
   }
   
-  return false
+  return highwayDistance / totalDistance
+}
+
+/**
+ * Calculates the total highway distance and number of highway segments
+ * Prefers routes that cross freeways quickly (fewer segments, shorter total distance)
+ * Returns an object with highwayDistance (in meters) and highwaySegmentCount
+ */
+function calculateHighwayMetrics(route: {
+  distance?: number
+  legs?: Array<{
+    steps?: Array<{
+      distance?: number
+      name?: string
+      driving_side?: string
+      mode?: string
+      ref?: string
+    }>
+  }>
+}): { highwayDistance: number; highwaySegmentCount: number } {
+  if (!route.legs || !Array.isArray(route.legs)) {
+    return { highwayDistance: 0, highwaySegmentCount: 0 }
+  }
+  
+  // Highway type keywords
+  const highwayTypes = ['motorway', 'motorway_link', 'trunk', 'trunk_link']
+  
+  // Common highway indicators in road names
+  const highwayIndicators = [
+    'highway', 'freeway', 'interstate', 'i-', 'i ', 'us-', 'us ', 
+    'state route', 'sr-', 'parkway', 'expressway', 'turnpike'
+  ]
+  
+  let highwayDistance = 0
+  let highwaySegmentCount = 0
+  let inHighwaySegment = false
+  
+  for (const leg of route.legs) {
+    if (leg.steps && Array.isArray(leg.steps)) {
+      for (const step of leg.steps) {
+        const name = (step.name || '').toLowerCase()
+        const ref = (step.ref || '').toLowerCase()
+        const combined = `${name} ${ref}`
+        const stepDistance = step.distance || 0
+        
+        // Check if this step is on a highway
+        let isHighway = false
+        
+        // Check for highway type keywords
+        if (highwayTypes.some(type => combined.includes(type))) {
+          isHighway = true
+        }
+        
+        // Check for highway indicators in names/refs
+        // Interstate highways (I-5, I-10, etc.)
+        if (/^i-?\d+/.test(ref) || /^i-?\d+/.test(name)) {
+          isHighway = true
+        }
+        
+        // US highways (US-101, US 101, etc.)
+        if (/^us-?\d+/.test(ref) || /^us-?\d+/.test(name)) {
+          isHighway = true
+        }
+        
+        // Check for other highway indicators
+        if (highwayIndicators.some(indicator => combined.includes(indicator))) {
+          isHighway = true
+        }
+        
+        if (isHighway) {
+          highwayDistance += stepDistance
+          // Count new highway segments (when entering a highway)
+          if (!inHighwaySegment) {
+            highwaySegmentCount++
+            inHighwaySegment = true
+          }
+        } else {
+          inHighwaySegment = false
+        }
+      }
+    }
+  }
+  
+  return { highwayDistance, highwaySegmentCount }
 }
 
 /**
  * Routes between two coordinates using OSRM, preferring straighter paths
- * For running routes, we want more direct paths and avoid highways
+ * For running routes, we want more direct paths and minimize highway travel
  */
 async function routeBetweenPoints(
   start: Coordinate,
   end: Coordinate,
   profile: 'driving' | 'walking' | 'cycling',
   preferStraight: boolean = true,
-  avoidHighways: boolean = true
+  avoidHighways: boolean = true,
 ): Promise<Coordinate[]> {
   try {
     const waypoints = `${start.lng},${start.lat};${end.lng},${end.lat}`
@@ -458,24 +803,12 @@ async function routeBetweenPoints(
       return [start, end]
     }
     
-    // Filter and select the best route
-    // First, filter out routes with highways if avoidHighways is true
-    let candidateRoutes = data.routes
-    if (avoidHighways) {
-      candidateRoutes = candidateRoutes.filter((route: any) => !routeContainsHighways(route))
-      // If all routes contain highways, fall back to all routes (better than no route)
-      if (candidateRoutes.length === 0) {
-        console.warn('All routes contain highways, using best available route')
-        candidateRoutes = data.routes
-      }
-    }
-    
-    // If we have multiple routes, choose the best one based on straightness
-    let bestRoute = candidateRoutes[0]
-    if (preferStraight && candidateRoutes.length > 1) {
-      let bestScore = 0
+    // Select the best route based on straightness and highway minimization
+    let bestRoute = data.routes[0]
+    if (preferStraight && data.routes.length > 1) {
+      let bestScore = -Infinity
       
-      for (const route of candidateRoutes) {
+      for (const route of data.routes) {
         if (route.geometry && route.geometry.type === 'LineString' && route.geometry.coordinates) {
           const routeCoords = route.geometry.coordinates.map((coord: [number, number]) => ({
             lat: coord[1],
@@ -485,10 +818,22 @@ async function routeBetweenPoints(
           
           // Prefer routes that are straighter (higher ratio)
           // Also slightly prefer shorter routes for the same straightness
-          // Penalize routes with highways if avoidHighways is true
+          // Minimize highway usage if avoidHighways is true
+          // Prefer routes that cross freeways quickly (minimize highway distance and segments)
           const routeDistance = route.distance || Infinity
-          const hasHighways = avoidHighways && routeContainsHighways(route)
-          const highwayPenalty = hasHighways ? 0.5 : 1.0 // Heavy penalty for highways
+          let highwayPenalty = 1.0
+          if (avoidHighways) {
+            const highwayMetrics = calculateHighwayMetrics(route)
+            const highwayDistanceKm = highwayMetrics.highwayDistance / 1000 // Convert to km
+            
+            // Penalize based on:
+            // 1. Total highway distance (prefer shorter highway segments = quick crossings)
+            // 2. Number of highway segments (prefer fewer crossings = more efficient)
+            // Maximum penalty for long highway travel or many segments
+            const distancePenalty = Math.min(1.0, 1.0 - (highwayDistanceKm * 0.5)) // 0.5 penalty per km of highway
+            const segmentPenalty = Math.min(1.0, 1.0 - (highwayMetrics.highwaySegmentCount * 0.1)) // 0.1 penalty per segment
+            highwayPenalty = Math.max(0.2, distancePenalty * segmentPenalty) // Combined penalty, minimum 0.2
+          }
           const score = routeStraightness * (1 + 1 / (routeDistance / 1000 + 1)) * highwayPenalty
           
           if (score > bestScore) {
@@ -505,8 +850,11 @@ async function routeBetweenPoints(
         lat: coord[1],
         lng: coord[0],
       }))
-      // Smooth the route to remove small protrusions
-      return smoothPath(routeCoords)
+      // Remove redundant loops
+      const loopFreeCoords = mergeRedundantEdges(routeCoords, 0.001)
+      // Remove backtracking points (edges with ~180 degree bearing difference)
+      const backtrackFreeCoords = removeBacktrackPoints(loopFreeCoords, 20)
+      return backtrackFreeCoords
     }
     
     return [start, end]
@@ -655,8 +1003,6 @@ export async function snapToRoads(
   if (optimizeOrder && coordinates.length > 2) {
     try {
       optimizedCoordinates = await optimizeWaypointOrder(coordinates, profile)
-      // Apply smoothing to waypoint positions after optimization
-      optimizedCoordinates = smoothPath(optimizedCoordinates, 0.03) // 30m smoothing threshold
     } catch (error) {
       console.warn('Waypoint order optimization failed, using original order:', error)
       optimizedCoordinates = coordinates
@@ -690,24 +1036,14 @@ export async function snapToRoads(
         return coordinates
       }
       
-      // Filter out routes with highways if avoidHighways is true
-      let candidateRoutes = data.routes
-      if (avoidHighways) {
-        candidateRoutes = candidateRoutes.filter((route: any) => !routeContainsHighways(route))
-        if (candidateRoutes.length === 0) {
-          console.warn('All routes contain highways, using best available route')
-          candidateRoutes = data.routes
-        }
-      }
-      
-      // Choose the straightest route if multiple alternatives are available
-      let bestRoute = candidateRoutes[0]
-      if (candidateRoutes.length > 1) {
-        let bestScore = 0
+      // Choose the best route based on straightness and highway minimization
+      let bestRoute = data.routes[0]
+      if (data.routes.length > 1) {
+        let bestScore = -Infinity
         const start = coordinates[0]
         const end = coordinates[coordinates.length - 1]
         
-        for (const route of candidateRoutes) {
+        for (const route of data.routes) {
           if (route.geometry && route.geometry.type === 'LineString' && route.geometry.coordinates) {
             const routeCoords = route.geometry.coordinates.map((coord: [number, number]) => ({
               lat: coord[1],
@@ -715,8 +1051,19 @@ export async function snapToRoads(
             }))
             const routeStraightness = calculateStraightness(routeCoords, start, end)
             const routeDistance = route.distance || Infinity
-            const hasHighways = avoidHighways && routeContainsHighways(route)
-            const highwayPenalty = hasHighways ? 0.5 : 1.0
+            let highwayPenalty = 1.0
+            if (avoidHighways) {
+              const highwayMetrics = calculateHighwayMetrics(route)
+              const highwayDistanceKm = highwayMetrics.highwayDistance / 1000 // Convert to km
+              
+              // Penalize based on:
+              // 1. Total highway distance (prefer shorter highway segments = quick crossings)
+              // 2. Number of highway segments (prefer fewer crossings = more efficient)
+              // Maximum penalty for long highway travel or many segments
+              const distancePenalty = Math.min(1.0, 1.0 - (highwayDistanceKm * 0.5)) // 0.5 penalty per km of highway
+              const segmentPenalty = Math.min(1.0, 1.0 - (highwayMetrics.highwaySegmentCount * 0.1)) // 0.1 penalty per segment
+              highwayPenalty = Math.max(0.2, distancePenalty * segmentPenalty) // Combined penalty, minimum 0.2
+            }
             const score = routeStraightness * (1 + 1 / (routeDistance / 1000 + 1)) * highwayPenalty
             
             if (score > bestScore) {
@@ -733,8 +1080,11 @@ export async function snapToRoads(
           lat: coord[1],
           lng: coord[0],
         }))
-        // Apply smoothing after routing
-        return smoothPath(routeCoords)
+        // Remove redundant loops
+        const loopFreeCoords = mergeRedundantEdges(routeCoords, 0.001)
+        // Remove backtracking points (edges with ~180 degree bearing difference)
+        const backtrackFreeCoords = removeBacktrackPoints(loopFreeCoords, 20)
+        return backtrackFreeCoords
       }
       
       return optimizedCoordinates
@@ -760,14 +1110,8 @@ export async function snapToRoads(
       // Calculate distance to determine if we need intermediate points
       const segmentDistance = distance(start, end)
       
-      // For running routes, use fewer intermediate points to allow for more direct routing
-      // Only add intermediate points for very long segments
-      let waypoints: Coordinate[]
-      if (segmentDistance > 0.5) { // Only if segment is longer than 500m (increased threshold)
-        waypoints = addIntermediatePoints(start, end, 0.3) // ~300m segments (longer segments)
-      } else {
-        waypoints = [start, end] // Route directly for shorter segments
-      }
+      // Route directly between waypoints without adding intermediate points
+      let waypoints: Coordinate[] = [start, end]
       
       // Route between each pair of consecutive waypoints
       for (let j = 0; j < waypoints.length - 1; j++) {
@@ -841,11 +1185,13 @@ export async function snapToRoads(
       }
     }
     
-    // Step 2: Apply smoothing after Dijkstra's optimization and routing
-    // This removes small protrusions and smooths the final path
-    const smoothedPoints = smoothPath(cleanedPoints, 0.02) // 20m smoothing threshold
+    // Step 2: Remove redundant loops (cycles that lead back to themselves)
+    const loopFreePoints = mergeRedundantEdges(cleanedPoints, 0.001) // ~111m threshold
     
-    return smoothedPoints.length > 0 ? smoothedPoints : optimizedCoordinates
+    // Step 3: Remove backtracking points (edges with ~180 degree bearing difference)
+    const backtrackFreePoints = removeBacktrackPoints(loopFreePoints, 20)
+    
+    return backtrackFreePoints.length > 0 ? backtrackFreePoints : optimizedCoordinates
   } catch (error) {
     console.error('Error snapping to roads with shape preservation:', error)
     return coordinates

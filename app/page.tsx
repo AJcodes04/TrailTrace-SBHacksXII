@@ -34,21 +34,21 @@ const RouteMap = dynamic(() => import('@/components/RouteMap'), {
 
 /**
  * Example route demonstrating polyline rendering
- * This represents a simple running loop in the Santa Barbara area
+ * This represents a simple running loop in the Los Angeles area
  */
 const exampleRoute: Route = {
   id: 'example-route-1',
   name: 'Example Running Loop',
   coordinates: [
-    { lat: 34.4150, lng: -119.6900 }, // Starting point
-    { lat: 34.4250, lng: -119.7000 },
-    { lat: 34.4350, lng: -119.7100 },
-    { lat: 34.4320, lng: -119.7200 },
-    { lat: 34.4220, lng: -119.7250 },
-    { lat: 34.4120, lng: -119.7200 },
-    { lat: 34.4050, lng: -119.7100 },
-    { lat: 34.4080, lng: -119.7000 },
-    { lat: 34.4150, lng: -119.6900 }, // Return to start
+    { lat: 34.0522, lng: -118.2437 }, // Starting point (Downtown LA)
+    { lat: 34.0622, lng: -118.2537 },
+    { lat: 34.0722, lng: -118.2637 },
+    { lat: 34.0692, lng: -118.2737 },
+    { lat: 34.0592, lng: -118.2787 },
+    { lat: 34.0492, lng: -118.2737 },
+    { lat: 34.0422, lng: -118.2637 },
+    { lat: 34.0452, lng: -118.2537 },
+    { lat: 34.0522, lng: -118.2437 }, // Return to start
   ],
   color: '#3b82f6',
   weight: 5,
@@ -63,6 +63,47 @@ export default function Home() {
   const [showWaypoints, setShowWaypoints] = useState(true)
   const [waypoints, setWaypoints] = useState<Coordinate[]>(exampleRoute.coordinates)
   const [draggableMode, setDraggableMode] = useState(false)
+  const [showDebugVertices, setShowDebugVertices] = useState(false)
+  const [currentVertexIndex, setCurrentVertexIndex] = useState<number | null>(null)
+  
+  // Keyboard navigation for vertices (a = previous, d = next)
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Only handle if a route is shown and we're not typing in an input
+      if (!showExample || routes.length === 0 || routes[0].coordinates.length === 0) {
+        return
+      }
+      
+      // Check if user is typing in an input field
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return
+      }
+      
+      const maxIndex = routes[0].coordinates.length - 1
+      
+      if (e.key === 'a' || e.key === 'A') {
+        // Previous vertex
+        if (currentVertexIndex === null) {
+          setCurrentVertexIndex(maxIndex) // Start from last if none selected
+        } else if (currentVertexIndex > 0) {
+          setCurrentVertexIndex(currentVertexIndex - 1)
+        }
+      } else if (e.key === 'd' || e.key === 'D') {
+        // Next vertex
+        if (currentVertexIndex === null) {
+          setCurrentVertexIndex(0) // Start from first if none selected
+        } else if (currentVertexIndex < maxIndex) {
+          setCurrentVertexIndex(currentVertexIndex + 1)
+        }
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyPress)
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress)
+    }
+  }, [showExample, routes, currentVertexIndex])
   
   // Update waypoints when example route changes and snap them to intersections
   useEffect(() => {
@@ -329,6 +370,28 @@ export default function Home() {
                 >
                   {draggableMode ? 'Stop Moving Points' : 'Move Points'}
                 </button>
+                <button
+                  onClick={() => setShowDebugVertices(!showDebugVertices)}
+                  style={{
+                    padding: '8px 16px',
+                    background: showDebugVertices ? '#10b981' : '#9ca3af',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    transition: 'background-color 0.2s',
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.background = showDebugVertices ? '#059669' : '#6b7280'
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.background = showDebugVertices ? '#10b981' : '#9ca3af'
+                  }}
+                >
+                  {showDebugVertices ? 'Hide Vertices' : 'Show Vertices'}
+                </button>
               </>
             )}
             <div style={{
@@ -349,12 +412,14 @@ export default function Home() {
         <RouteMap
           routes={routes}
           waypoints={showExample ? waypoints : []}
-          center={{ lat: 34.4208, lng: -119.6982 }}
-          zoom={10}
+          center={{ lat: 34.0522, lng: -118.2437 }}
+          zoom={11}
           onRouteClick={handleRouteClick}
           showWaypoints={showWaypoints}
           draggableMode={draggableMode && showWaypoints}
           onWaypointMove={handleWaypointMove}
+          showDebugVertices={showDebugVertices}
+          currentVertexIndex={currentVertexIndex}
         />
       </div>
 
@@ -378,7 +443,7 @@ export default function Home() {
             <span style={{ fontWeight: '500' }}>Region:</span> Southern California
           </div>
           <div>
-            Click on a route to interact • Use mouse wheel to zoom • Drag to pan • Click "Move Points" to drag waypoints
+            Click on a route to interact • Use mouse wheel to zoom • Drag to pan • Click "Move Points" to drag waypoints • Press <strong>A</strong> (prev) / <strong>D</strong> (next) to navigate vertices
           </div>
         </div>
       </div>
