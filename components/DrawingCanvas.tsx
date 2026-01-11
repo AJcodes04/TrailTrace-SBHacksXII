@@ -113,6 +113,28 @@ export default function DrawingCanvas({
     }
   }
 
+  // Sample every 4th coordinate
+  const sampleCoordinates = (pts: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> => {
+    if (pts.length <= 4) return pts
+    
+    const sampled: Array<{ x: number; y: number }> = []
+    // Always include the first point
+    sampled.push(pts[0])
+    
+    // Sample every 4th point (indices 4, 8, 12, ...)
+    for (let i = 4; i < pts.length; i += 4) {
+      sampled.push(pts[i])
+    }
+    
+    // Always include the last point if it's not already included
+    const lastIndex = pts.length - 1
+    if (lastIndex % 4 !== 0) {
+      sampled.push(pts[lastIndex])
+    }
+    
+    return sampled
+  }
+
   // Stop drawing
   const stopDrawing = () => {
     if (!isDrawingRef.current) return
@@ -120,9 +142,9 @@ export default function DrawingCanvas({
 
     // When drawing stops, process the points
     if (pointsRef.current.length > 0) {
-      // Simplify points if needed
-      const simplifiedPoints = simplifyPoints(pointsRef.current)
-      onDrawingComplete(simplifiedPoints)
+      // Sample 1 out of every 4 coordinates
+      const sampledPoints = sampleCoordinates(pointsRef.current)
+      onDrawingComplete(sampledPoints)
       // Reset points for next drawing
       pointsRef.current = []
     }
