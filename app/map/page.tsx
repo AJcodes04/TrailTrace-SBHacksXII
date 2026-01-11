@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
+import Image from 'next/image'
 import type { Route, Coordinate } from '@/types/route'
 import { snapToRoads, snapToNearestRoad, snapMultipleToNearestRoad, optimizeWaypointOrder } from '@/utils/routeHelpers'
 import DrawingCanvas from '@/components/DrawingCanvas'
@@ -66,6 +67,16 @@ export default function MapPage() {
   const [draggableMode, setDraggableMode] = useState(false)
   const [drawingMode, setDrawingMode] = useState(false)
   const [showCanvas, setShowCanvas] = useState(false)
+  const [darkMode, setDarkMode] = useState(false)
+
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode)
+    if (!darkMode) {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+  }
   
   // Define the geographic area for route generation (Los Angeles area)
   const mapBounds = {
@@ -300,95 +311,45 @@ export default function MapPage() {
   }
 
   return (
-    <main style={{
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100vh',
-      width: '100vw',
-    }}>
-      {/* Header */}
-      <header style={{
-        background: 'white',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-        borderBottom: '1px solid #e5e7eb',
-        padding: '16px 24px',
-        zIndex: 10,
-      }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-          <div>
-            <h1 style={{
-              fontSize: '24px',
-              fontWeight: 'bold',
-              color: '#111827',
-              marginBottom: '4px',
-            }}>TrailTrace</h1>
-            <p style={{
-              fontSize: '14px',
-              color: '#4b5563',
-            }}>Running Route Generator - Southern California</p>
+    <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
+      <div className="flex flex-col lg:flex-row bg-stone-50 dark:bg-forest-900 text-forest-900 dark:text-stone-50 h-screen">
+        {/* Sidebar - Fixed on desktop */}
+        <aside className="w-full lg:w-64 lg:h-screen lg:sticky lg:top-0 bg-white dark:bg-forest-800 border-b lg:border-b-0 lg:border-r border-forest-200 dark:border-forest-700 flex flex-col z-50">
+          {/* Logo */}
+          <div className="p-6 border-b border-forest-200 dark:border-forest-700">
+            <div className="relative w-32 h-16 mb-3">
+              <Image
+                src="/images/logo.png"
+                alt="TrailTrace Logo"
+                fill
+                className="object-contain"
+                priority
+              />
+            </div>
+            <p className="text-sm text-forest-600 dark:text-forest-300 font-medium">
+              Draw your path. Run your route.
+            </p>
           </div>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-          }}>
+
+          {/* Navigation */}
+          <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
             <button
               onClick={() => setShowCanvas(!showCanvas)}
               disabled={isSnapping}
-              style={{
-                padding: '8px 16px',
-                background: showCanvas ? '#f97316' : '#2563eb',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: isSnapping ? 'not-allowed' : 'pointer',
-                fontSize: '14px',
-                fontWeight: '500',
-                transition: 'background-color 0.2s',
-                opacity: isSnapping ? 0.6 : 1,
-              }}
-              onMouseOver={(e) => {
-                if (!isSnapping) {
-                  e.currentTarget.style.background = showCanvas ? '#ea580c' : '#1d4ed8'
-                }
-              }}
-              onMouseOut={(e) => {
-                if (!isSnapping) {
-                  e.currentTarget.style.background = showCanvas ? '#f97316' : '#2563eb'
-                }
-              }}
+              className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
+                showCanvas
+                  ? 'bg-orange-accent text-white'
+                  : 'hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200'
+              } ${isSnapping ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               {showCanvas ? 'Close Canvas' : 'Draw Route'}
             </button>
             <button
               onClick={toggleExampleRoute}
               disabled={isSnapping || drawingMode}
-              style={{
-                padding: '8px 16px',
-                background: '#6b7280',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: (isSnapping || drawingMode) ? 'not-allowed' : 'pointer',
-                fontSize: '14px',
-                fontWeight: '500',
-                transition: 'background-color 0.2s',
-                opacity: (isSnapping || drawingMode) ? 0.6 : 1,
-              }}
-              onMouseOver={(e) => {
-                if (!isSnapping && !drawingMode) {
-                  e.currentTarget.style.background = '#4b5563'
-                }
-              }}
-              onMouseOut={(e) => {
-                if (!isSnapping && !drawingMode) {
-                  e.currentTarget.style.background = '#6b7280'
-                }
-              }}
+              className={`w-full text-left px-4 py-2 rounded-lg hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200 transition-colors ${
+                isSnapping || drawingMode ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
               {showExample ? 'Hide Example Route' : 'Show Example Route'}
             </button>
@@ -397,200 +358,120 @@ export default function MapPage() {
                 <button
                   onClick={toggleRoadSnapping}
                   disabled={isSnapping}
-                  style={{
-                    padding: '8px 16px',
-                    background: isSnappedToRoads ? '#10b981' : '#6b7280',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: isSnapping ? 'not-allowed' : 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    transition: 'background-color 0.2s',
-                    opacity: isSnapping ? 0.6 : 1,
-                  }}
-                  onMouseOver={(e) => {
-                    if (!isSnapping) {
-                      e.currentTarget.style.background = isSnappedToRoads ? '#059669' : '#4b5563'
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    if (!isSnapping) {
-                      e.currentTarget.style.background = isSnappedToRoads ? '#10b981' : '#6b7280'
-                    }
-                  }}
+                  className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
+                    isSnappedToRoads
+                      ? 'bg-green-500 text-white hover:bg-green-600'
+                      : 'hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200'
+                  } ${isSnapping ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                   {isSnapping ? 'Snapping...' : isSnappedToRoads ? 'Show Straight Lines' : 'Snap to Roads'}
                 </button>
                 <button
                   onClick={() => setShowWaypoints(!showWaypoints)}
-                  style={{
-                    padding: '8px 16px',
-                    background: showWaypoints ? '#ef4444' : '#9ca3af',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    transition: 'background-color 0.2s',
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.background = showWaypoints ? '#dc2626' : '#6b7280'
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.background = showWaypoints ? '#ef4444' : '#9ca3af'
-                  }}
+                  className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
+                    showWaypoints
+                      ? 'bg-red-500 text-white hover:bg-red-600'
+                      : 'hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200'
+                  }`}
                 >
                   {showWaypoints ? 'Hide Waypoints' : 'Show Waypoints'}
                 </button>
                 <button
                   onClick={() => setDraggableMode(!draggableMode)}
                   disabled={!showWaypoints}
-                  style={{
-                    padding: '8px 16px',
-                    background: draggableMode ? '#f59e0b' : '#9ca3af',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: !showWaypoints ? 'not-allowed' : 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    transition: 'background-color 0.2s',
-                    opacity: !showWaypoints ? 0.5 : 1,
-                  }}
-                  onMouseOver={(e) => {
-                    if (showWaypoints) {
-                      e.currentTarget.style.background = draggableMode ? '#d97706' : '#6b7280'
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    if (showWaypoints) {
-                      e.currentTarget.style.background = draggableMode ? '#f59e0b' : '#9ca3af'
-                    }
-                  }}
+                  className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
+                    draggableMode
+                      ? 'bg-amber-500 text-white hover:bg-amber-600'
+                      : 'hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200'
+                  } ${!showWaypoints ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   {draggableMode ? 'Stop Moving Points' : 'Move Points'}
                 </button>
               </>
             )}
-            <div style={{
-              fontSize: '14px',
-              color: '#4b5563',
-            }}>
-              Routes: <span style={{ fontWeight: '600' }}>{routes.length}</span>
+            <div className="px-4 py-2 text-sm text-forest-600 dark:text-forest-300">
+              Routes: <span className="font-semibold">{routes.length}</span>
             </div>
+          </nav>
+
+          {/* Footer */}
+          <div className="p-4 border-t border-forest-200 dark:border-forest-700 space-y-4">
+            <button
+              onClick={toggleDarkMode}
+              className="w-full px-4 py-2 rounded-lg bg-forest-100 dark:bg-forest-700 hover:bg-forest-200 dark:hover:bg-forest-600 text-forest-700 dark:text-forest-200 transition-colors text-sm"
+            >
+              {darkMode ? '☀️ Light mode' : '🌙 Dark mode'}
+            </button>
             <button
               onClick={handleSignOut}
-              style={{
-                padding: '8px 16px',
-                background: '#ef4444',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500',
-                transition: 'background-color 0.2s',
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.background = '#dc2626'
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.background = '#ef4444'
-              }}
+              className="w-full px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors text-sm font-semibold"
             >
               Sign Out
             </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <div style={{
-        flex: 1,
-        position: 'relative',
-        display: 'flex',
-      }}>
-        {/* Drawing Canvas Sidebar */}
-        {showCanvas && (
-          <div style={{
-            width: '450px',
-            background: 'white',
-            borderRight: '1px solid #e5e7eb',
-            padding: '24px',
-            overflowY: 'auto',
-            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
-            zIndex: 100,
-          }}>
-            <h2 style={{
-              fontSize: '20px',
-              fontWeight: 'bold',
-              color: '#111827',
-              marginBottom: '16px',
-            }}>
-              Draw Your Route
-            </h2>
-            <p style={{
-              fontSize: '14px',
-              color: '#4b5563',
-              marginBottom: '24px',
-            }}>
-              Draw any shape on the canvas. We&apos;ll generate waypoints and create a route in the Los Angeles area.
+            <div className="flex space-x-4 justify-center">
+              <a href="#" className="text-forest-400 hover:text-orange-accent transition-colors">Twitter</a>
+              <a href="#" className="text-forest-400 hover:text-orange-accent transition-colors">GitHub</a>
+            </div>
+            <p className="text-xs text-center text-forest-500 dark:text-forest-400">
+              SB Hacks - 2026
             </p>
-            <DrawingCanvas
-              onDrawingComplete={handleCanvasDrawingComplete}
-              width={400}
-              height={400}
-            />
           </div>
-        )}
+        </aside>
 
-        {/* Map Container */}
-        <div style={{
-          flex: 1,
-          position: 'relative',
-        }}>
-          <RouteMap
-            routes={routes}
-            waypoints={showExample ? waypoints : []}
-            center={{ lat: 34.0522, lng: -118.2437 }}
-            zoom={10}
-            onRouteClick={handleRouteClick}
-            showWaypoints={showWaypoints && !drawingMode}
-            draggableMode={draggableMode && showWaypoints && !drawingMode}
-            onWaypointMove={handleWaypointMove}
-            enableDrawing={drawingMode}
-            onDrawingComplete={handleDrawingComplete}
-          />
-        </div>
-      </div>
+        {/* Main Content */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          {/* Main Content Area */}
+          <div className="flex-1 relative flex overflow-hidden">
+            {/* Drawing Canvas Sidebar */}
+            {showCanvas && (
+              <div className="w-full lg:w-[450px] bg-white dark:bg-forest-800 border-r border-forest-200 dark:border-forest-700 p-6 overflow-y-auto shadow-lg z-10">
+                <h2 className="text-xl font-bold text-forest-900 dark:text-white mb-4">
+                  Draw Your Route
+                </h2>
+                <p className="text-sm text-forest-600 dark:text-forest-300 mb-6">
+                  Draw any shape on the canvas. We&apos;ll generate waypoints and create a route in the Los Angeles area.
+                </p>
+                <DrawingCanvas
+                  onDrawingComplete={handleCanvasDrawingComplete}
+                  width={400}
+                  height={400}
+                />
+              </div>
+            )}
 
-      {/* Info Panel */}
-      <div style={{
-        background: '#f9fafb',
-        borderTop: '1px solid #e5e7eb',
-        padding: '12px 24px',
-        zIndex: 10,
-      }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          fontSize: '14px',
-          color: '#4b5563',
-        }}>
-          <div>
-            <span style={{ fontWeight: '500' }}>Map Provider:</span> OpenStreetMap
-            <span style={{ margin: '0 8px' }}>•</span>
-            <span style={{ fontWeight: '500' }}>Region:</span> Southern California
+            {/* Map Container */}
+            <div className="flex-1 relative">
+              <RouteMap
+                routes={routes}
+                waypoints={showExample ? waypoints : []}
+                center={{ lat: 34.0522, lng: -118.2437 }}
+                zoom={10}
+                onRouteClick={handleRouteClick}
+                showWaypoints={showWaypoints && !drawingMode}
+                draggableMode={draggableMode && showWaypoints && !drawingMode}
+                onWaypointMove={handleWaypointMove}
+                enableDrawing={drawingMode}
+                onDrawingComplete={handleDrawingComplete}
+              />
+            </div>
           </div>
-          <div>
-            Click on a route to interact • Use mouse wheel to zoom • Drag to pan • Click &quot;Move Points&quot; to drag waypoints
+
+          {/* Info Panel */}
+          <div className="bg-white/50 dark:bg-forest-800/50 backdrop-blur-sm border-t border-forest-200 dark:border-forest-700 px-6 py-3 z-10">
+            <div className="flex flex-col sm:flex-row items-center justify-between text-sm text-forest-600 dark:text-forest-300 gap-2">
+              <div>
+                <span className="font-semibold">Map Provider:</span> OpenStreetMap
+                <span className="mx-2">•</span>
+                <span className="font-semibold">Region:</span> Southern California
+              </div>
+              <div className="text-xs sm:text-sm">
+                Click on a route to interact • Use mouse wheel to zoom • Drag to pan • Click &quot;Move Points&quot; to drag waypoints
+              </div>
+            </div>
           </div>
-        </div>
+        </main>
       </div>
-    </main>
+    </div>
   )
 }
 
