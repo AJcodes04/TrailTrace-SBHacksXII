@@ -63,6 +63,7 @@ export default function MapPage() {
   const [showWaypoints, setShowWaypoints] = useState(true)
   const [waypoints, setWaypoints] = useState<Coordinate[]>(exampleRoute.coordinates)
   const [draggableMode, setDraggableMode] = useState(false)
+  const [drawingMode, setDrawingMode] = useState(false)
   
   // Update waypoints when example route changes and snap them to intersections
   useEffect(() => {
@@ -192,6 +193,39 @@ export default function MapPage() {
     }
   }
 
+  const handleDrawingComplete = async (coordinates: Coordinate[]) => {
+    if (coordinates.length < 2) {
+      alert('Please draw a route with at least 2 points')
+      return
+    }
+
+    setIsSnapping(true)
+    setDrawingMode(false) // Exit drawing mode
+
+    try {
+      // Route the drawn coordinates through OSRM
+      const snappedCoords = await snapToRoads(coordinates, 'walking', true, true)
+      
+      const newRoute: Route = {
+        id: `route-${Date.now()}`,
+        name: 'Drawn Route',
+        coordinates: snappedCoords,
+        color: '#f97316', // TrailTrace orange
+        weight: 5,
+        opacity: 0.8,
+      }
+
+      // Add the new route to the routes array
+      setRoutes([...routes, newRoute])
+      setShowExample(false) // Hide example route if showing
+    } catch (error) {
+      console.error('Failed to generate route from drawing:', error)
+      alert('Failed to generate route. Please try again.')
+    } finally {
+      setIsSnapping(false)
+    }
+  }
+
   const handleSignOut = () => {
     localStorage.removeItem('trailtrace_auth')
     window.location.href = '/'
@@ -235,11 +269,11 @@ export default function MapPage() {
             gap: '16px',
           }}>
             <button
-              onClick={toggleExampleRoute}
+              onClick={() => setDrawingMode(!drawingMode)}
               disabled={isSnapping}
               style={{
                 padding: '8px 16px',
-                background: '#2563eb',
+                background: drawingMode ? '#f97316' : '#2563eb',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
@@ -249,8 +283,44 @@ export default function MapPage() {
                 transition: 'background-color 0.2s',
                 opacity: isSnapping ? 0.6 : 1,
               }}
-              onMouseOver={(e) => !isSnapping && (e.currentTarget.style.background = '#1d4ed8')}
-              onMouseOut={(e) => !isSnapping && (e.currentTarget.style.background = '#2563eb')}
+              onMouseOver={(e) => {
+                if (!isSnapping) {
+                  e.currentTarget.style.background = drawingMode ? '#ea580c' : '#1d4ed8'
+                }
+              }}
+              onMouseOut={(e) => {
+                if (!isSnapping) {
+                  e.currentTarget.style.background = drawingMode ? '#f97316' : '#2563eb'
+                }
+              }}
+            >
+              {drawingMode ? 'Stop Drawing' : 'Draw Route'}
+            </button>
+            <button
+              onClick={toggleExampleRoute}
+              disabled={isSnapping || drawingMode}
+              style={{
+                padding: '8px 16px',
+                background: '#6b7280',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: (isSnapping || drawingMode) ? 'not-allowed' : 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                transition: 'background-color 0.2s',
+                opacity: (isSnapping || drawingMode) ? 0.6 : 1,
+              }}
+              onMouseOver={(e) => {
+                if (!isSnapping && !drawingMode) {
+                  e.currentTarget.style.background = '#4b5563'
+                }
+              }}
+              onMouseOut={(e) => {
+                if (!isSnapping && !drawingMode) {
+                  e.currentTarget.style.background = '#6b7280'
+                }
+              }}
             >
               {showExample ? 'Hide Example Route' : 'Show Example Route'}
             </button>
@@ -379,9 +449,11 @@ export default function MapPage() {
           center={{ lat: 34.4208, lng: -119.6982 }}
           zoom={10}
           onRouteClick={handleRouteClick}
-          showWaypoints={showWaypoints}
-          draggableMode={draggableMode && showWaypoints}
+          showWaypoints={showWaypoints && !drawingMode}
+          draggableMode={draggableMode && showWaypoints && !drawingMode}
           onWaypointMove={handleWaypointMove}
+          enableDrawing={drawingMode}
+          onDrawingComplete={handleDrawingComplete}
         />
       </div>
 

@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
+import 'leaflet-draw'
 import type { Route, Coordinate } from '@/types/route'
 
 // Fix for default marker icons in Next.js/SSR
@@ -24,6 +25,8 @@ interface RouteMapProps {
   showWaypoints?: boolean // Toggle to show/hide waypoint markers
   draggableMode?: boolean // Enable/disable waypoint dragging
   onWaypointMove?: (index: number, newPosition: Coordinate) => void // Callback when a waypoint is moved
+  enableDrawing?: boolean // Enable drawing mode
+  onDrawingComplete?: (coordinates: Coordinate[]) => void // Callback when user finishes drawing
 }
 
 
@@ -144,6 +147,96 @@ function MapBoundsController({ routes, waypoints }: { routes?: Route[], waypoint
 }
 
 /**
+ * Component to handle drawing on the map using Leaflet Draw
+ */
+function DrawingController({ 
+  enableDrawing, 
+  onDrawingComplete 
+}: { 
+  enableDrawing?: boolean
+  onDrawingComplete?: (coordinates: Coordinate[]) => void 
+}) {
+  const map = useMap()
+  const drawControlRef = useRef<L.Control.Draw | null>(null)
+  const drawnItemsRef = useRef<L.FeatureGroup>(new L.FeatureGroup())
+
+  useEffect(() => {
+    if (!enableDrawing || !onDrawingComplete) return
+
+    // Add drawn items layer to map
+    const drawnItems = drawnItemsRef.current
+    drawnItems.addTo(map)
+
+    // Configure draw control - only allow polylines for route drawing
+    const drawControl = new (L.Control as any).Draw({
+      draw: {
+        polyline: {
+          shapeOptions: {
+            color: '#f97316', // TrailTrace orange
+            weight: 4,
+          },
+          allowIntersection: true,
+          showLength: true,
+        },
+        polygon: false,
+        circle: false,
+        rectangle: false,
+        marker: false,
+        circlemarker: false,
+      },
+      edit: {
+        featureGroup: drawnItems,
+        remove: true,
+      },
+    })
+
+    drawControlRef.current = drawControl
+    map.addControl(drawControl)
+
+    // Handle drawing completion
+    const handleDrawCreated = (e: any) => {
+      const layer = e.layer
+      const geoJSON = layer.toGeoJSON()
+
+      // Extract coordinates from the drawn polyline
+      if (geoJSON.geometry.type === 'LineString' && geoJSON.geometry.coordinates) {
+        const coordinates: Coordinate[] = geoJSON.geometry.coordinates.map(
+          ([lng, lat]: [number, number]) => ({
+            lat,
+            lng,
+          })
+        )
+
+        // Call callback with coordinates
+        onDrawingComplete(coordinates)
+
+        // Remove the drawn layer (we'll display the routed version instead)
+        map.removeLayer(layer)
+      }
+    }
+
+    // Handle draw deletion
+    const handleDrawDeleted = () => {
+      drawnItems.clearLayers()
+    }
+
+    map.on((L.Draw as any).Event.CREATED, handleDrawCreated)
+    map.on((L.Draw as any).Event.DELETED, handleDrawDeleted)
+
+    return () => {
+      if (drawControlRef.current) {
+        map.removeControl(drawControlRef.current)
+      }
+      map.off((L.Draw as any).Event.CREATED, handleDrawCreated)
+      map.off((L.Draw as any).Event.DELETED, handleDrawDeleted)
+      map.removeLayer(drawnItems)
+    }
+  }, [map, enableDrawing, onDrawingComplete])
+
+  return null
+}
+
+/**
  * Interactive map component for rendering running routes in Southern California
  * 
  * Features:
@@ -166,6 +259,8 @@ export default function RouteMap({
   showWaypoints = true,
   draggableMode = false,
   onWaypointMove,
+  enableDrawing = false,
+  onDrawingComplete,
 }: RouteMapProps) {
   
   // Default route color and style
@@ -258,6 +353,14 @@ export default function RouteMap({
       {/* Auto-fit bounds when routes or waypoints are provided */}
       {(routes.length > 0 || waypoints.length > 0) && (
         <MapBoundsController routes={routes} waypoints={waypoints} />
+      )}
+
+      {/* Drawing controller */}
+      {enableDrawing && (
+        <DrawingController 
+          enableDrawing={enableDrawing}
+          onDrawingComplete={onDrawingComplete}
+        />
       )}
     </MapContainer>
   )

@@ -9,7 +9,9 @@
         "lint": "next lint"
     },
     "dependencies": {
+        "@types/leaflet-draw": "^1.0.13",
         "leaflet": "^1.9.4",
+        "leaflet-draw": "^1.0.4",
         "next": "^14.2.13",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
