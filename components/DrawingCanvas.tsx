@@ -156,7 +156,7 @@ export default function DrawingCanvas({
 
   return (
     <div className="flex flex-col items-center gap-4">
-      <div className="relative border-2 border-forest-300 dark:border-forest-600 rounded-lg overflow-hidden bg-white dark:bg-forest-800 shadow-lg">
+      <div className="relative border-2 border-forest-300 rounded-lg overflow-hidden bg-white shadow-lg">
         <canvas
           ref={canvasRef}
           onMouseDown={startDrawing}
@@ -196,7 +196,7 @@ export default function DrawingCanvas({
           </button>
         </div>
         {!hasDrawing && (
-          <p className="text-sm text-forest-600 dark:text-forest-300 text-center">
+          <p className="text-sm text-forest-600 text-center">
             Draw your route shape on the canvas
           </p>
         )}

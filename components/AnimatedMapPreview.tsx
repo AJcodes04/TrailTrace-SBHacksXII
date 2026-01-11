@@ -9,7 +9,7 @@ import type { Route } from '@/types/route'
 const RouteMap = dynamic(() => import('@/components/RouteMap'), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-full bg-forest-100 dark:bg-forest-800 animate-pulse flex items-center justify-center">
+    <div className="w-full h-full bg-forest-100 animate-pulse flex items-center justify-center">
       <div className="text-forest-400">Loading map...</div>
     </div>
   ),
@@ -54,7 +54,7 @@ export default function AnimatedMapPreview({ className = '' }: AnimatedMapPrevie
 
   if (!mounted) {
     return (
-      <div className={`w-full h-full bg-forest-100 dark:bg-forest-800 animate-pulse ${className}`} />
+      <div className={`w-full h-full bg-forest-100 animate-pulse ${className}`} />
     )
   }
 

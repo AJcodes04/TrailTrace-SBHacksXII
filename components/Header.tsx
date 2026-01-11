@@ -13,7 +13,7 @@ export default function Header({ showHomeButton = false, onSignOut }: HeaderProp
   const router = useRouter();
 
   return (
-    <header className="sticky top-0 z-50 bg-white dark:bg-forest-800 border-b border-forest-200 dark:border-forest-700">
+    <header className="sticky top-0 z-50 bg-white border-b border-forest-200">
       <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -31,7 +31,7 @@ export default function Header({ showHomeButton = false, onSignOut }: HeaderProp
                   priority
                 />
               </div>
-              <p className="hidden sm:block text-sm text-forest-600 dark:text-forest-300 font-medium">
+              <p className="hidden sm:block text-sm text-forest-600 font-medium">
                 Draw your path. Run your route.
               </p>
             </button>
@@ -42,7 +42,7 @@ export default function Header({ showHomeButton = false, onSignOut }: HeaderProp
             {showHomeButton && (
               <button
                 onClick={() => router.push('/')}
-                className="px-4 py-2 bg-forest-100 dark:bg-forest-700 hover:bg-forest-200 dark:hover:bg-forest-600 text-forest-700 dark:text-forest-200 rounded-lg font-semibold text-sm transition-colors"
+                className="px-4 py-2 bg-forest-100 hover:bg-forest-200 text-forest-700 rounded-lg font-semibold text-sm transition-colors"
               >
                 Home
               </button>

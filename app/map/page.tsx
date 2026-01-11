@@ -67,7 +67,6 @@ export default function MapPage() {
   const [isSnapping, setIsSnapping] = useState(false)
   const [showCanvas, setShowCanvas] = useState(false)
   const [currentRoute, setCurrentRoute] = useState<Route | null>(null)
-  const [darkMode, setDarkMode] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
   const [pendingCanvasPoints, setPendingCanvasPoints] = useState<Array<{ x: number; y: number }> | null>(null)
@@ -87,15 +86,6 @@ export default function MapPage() {
     })
     return () => unsub()
   }, [router])
-
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode)
-    if (!darkMode) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-  }
   
   // Define the geographic area for route generation (Los Angeles area)
   const mapBounds = {
@@ -185,10 +175,10 @@ export default function MapPage() {
   // Show loading state while checking auth
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-stone-50 dark:bg-forest-900 flex items-center justify-center">
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-forest-200 dark:border-forest-700 border-t-orange-accent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-forest-600 dark:text-forest-300">Loading...</p>
+          <div className="w-16 h-16 border-4 border-forest-200 border-t-orange-accent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-forest-600">Loading...</p>
         </div>
       </div>
     )
@@ -200,13 +190,13 @@ export default function MapPage() {
   }
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
+    <div className="min-h-screen">
       {/* Header */}
       <Header showHomeButton onSignOut={handleAuthSignOut} />
 
-      <div className="flex flex-col lg:flex-row bg-stone-50 dark:bg-forest-900 text-forest-900 dark:text-stone-50 h-[calc(100vh-4rem)]">
+      <div className="flex flex-col lg:flex-row bg-stone-50 text-forest-900 h-[calc(100vh-4rem)]">
         {/* Sidebar - Fixed on desktop */}
-        <aside className="w-full lg:w-72 lg:h-full lg:sticky lg:top-16 bg-white dark:bg-forest-800 border-b lg:border-b-0 lg:border-r border-forest-200 dark:border-forest-700 flex flex-col z-40 shadow-sm">
+        <aside className="w-full lg:w-72 lg:h-full lg:sticky lg:top-16 bg-white border-b lg:border-b-0 lg:border-r border-forest-200 flex flex-col z-40 shadow-sm">
 
           {/* Navigation */}
           <nav className="flex-1 p-4 space-y-3 overflow-y-auto">
@@ -226,10 +216,10 @@ export default function MapPage() {
             
             {/* Status Indicator */}
             {(isSnapping || selectingStartPoint) && (
-              <div className="px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+              <div className="px-4 py-3 rounded-xl bg-blue-50 border border-blue-200">
                 <div className="flex items-center gap-2">
                   <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                  <span className="text-sm font-medium text-blue-700">
                     {isSnapping ? 'Generating route...' : selectingStartPoint ? 'Selecting start point...' : 'Processing...'}
                   </span>
                 </div>
@@ -238,15 +228,15 @@ export default function MapPage() {
 
             {/* Route Info Card */}
             {currentRoute && !isSnapping && !selectingStartPoint && (
-              <div className="px-4 py-4 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800">
+              <div className="px-4 py-4 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span className="text-xl">🗺️</span>
-                    <h3 className="font-semibold text-forest-900 dark:text-white">Route Created</h3>
+                    <h3 className="font-semibold text-forest-900">Route Created</h3>
                   </div>
                   <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
                 </div>
-                <p className="text-sm text-forest-600 dark:text-forest-300 mb-3">
+                <p className="text-sm text-forest-600 mb-3">
                   Your route has {currentRoute.coordinates.length} waypoints
                 </p>
                 <button
@@ -261,9 +251,9 @@ export default function MapPage() {
 
             {/* Instructions */}
             {!currentRoute && !showCanvas && !isSnapping && !selectingStartPoint && (
-              <div className="px-4 py-4 rounded-xl bg-forest-50 dark:bg-forest-700/50 border border-forest-200 dark:border-forest-600">
-                <h3 className="font-semibold text-forest-900 dark:text-white mb-2 text-sm">Get Started</h3>
-                <ol className="text-xs text-forest-600 dark:text-forest-300 space-y-1.5 list-decimal list-inside">
+              <div className="px-4 py-4 rounded-xl bg-forest-50 border border-forest-200">
+                <h3 className="font-semibold text-forest-900 mb-2 text-sm">Get Started</h3>
+                <ol className="text-xs text-forest-600 space-y-1.5 list-decimal list-inside">
                   <li>Click &quot;Draw New Route&quot; to open the canvas</li>
                   <li>Draw your desired route shape</li>
                   <li>Select a start point on the map</li>
@@ -274,18 +264,12 @@ export default function MapPage() {
           </nav>
 
           {/* Footer */}
-          <div className="p-4 border-t border-forest-200 dark:border-forest-700 space-y-4">
-            <button
-              onClick={toggleDarkMode}
-              className="w-full px-4 py-2 rounded-lg bg-forest-100 dark:bg-forest-700 hover:bg-forest-200 dark:hover:bg-forest-600 text-forest-700 dark:text-forest-200 transition-colors text-sm"
-            >
-              {darkMode ? '☀️ Light mode' : '🌙 Dark mode'}
-            </button>
+          <div className="p-4 border-t border-forest-200 space-y-4">
             <div className="flex space-x-4 justify-center">
               <a href="#" className="text-forest-400 hover:text-orange-accent transition-colors">Twitter</a>
               <a href="#" className="text-forest-400 hover:text-orange-accent transition-colors">GitHub</a>
             </div>
-            <p className="text-xs text-center text-forest-500 dark:text-forest-400">
+            <p className="text-xs text-center text-forest-500">
               SB Hacks - 2026
             </p>
           </div>
@@ -297,15 +281,15 @@ export default function MapPage() {
           <div className="flex-1 relative flex overflow-hidden">
             {/* Drawing Canvas Sidebar */}
             {showCanvas && (
-              <div className="w-full lg:w-[480px] bg-white dark:bg-forest-800 border-r border-forest-200 dark:border-forest-700 shadow-xl z-10 flex flex-col">
-                <div className="p-6 border-b border-forest-200 dark:border-forest-700 bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20">
+              <div className="w-full lg:w-[480px] bg-white border-r border-forest-200 shadow-xl z-10 flex flex-col">
+                <div className="p-6 border-b border-forest-200 bg-gradient-to-r from-orange-50 to-orange-100">
                   <div className="flex items-center gap-3 mb-2">
                     <span className="text-2xl">🎨</span>
-                    <h2 className="text-2xl font-bold text-forest-900 dark:text-white">
+                    <h2 className="text-2xl font-bold text-forest-900">
                       Draw Your Route
                     </h2>
                   </div>
-                  <p className="text-sm text-forest-700 dark:text-forest-200">
+                  <p className="text-sm text-forest-700">
                     Draw any shape on the canvas. After you finish, you&apos;ll select where on the map your route should start.
                   </p>
                 </div>
@@ -323,7 +307,7 @@ export default function MapPage() {
             {/* Map Container */}
             <div className="flex-1 relative">
               {selectingStartPoint && (
-                <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-[1000] bg-gradient-to-r from-orange-500 to-orange-600 text-white px-8 py-5 rounded-2xl shadow-2xl border-4 border-white dark:border-forest-700 max-w-md animate-pulse-slow">
+                <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-[1000] bg-gradient-to-r from-orange-500 to-orange-600 text-white px-8 py-5 rounded-2xl shadow-2xl border-4 border-white max-w-md animate-pulse-slow">
                   <div className="flex items-center gap-3 mb-2">
                     <span className="text-3xl">📍</span>
                     <div>
@@ -358,29 +342,29 @@ export default function MapPage() {
           </div>
 
           {/* Info Panel */}
-          <div className="bg-white/80 dark:bg-forest-800/80 backdrop-blur-md border-t border-forest-200 dark:border-forest-700 px-4 sm:px-6 py-3 z-10">
+          <div className="bg-white/80 backdrop-blur-md border-t border-forest-200 px-4 sm:px-6 py-3 z-10">
             <div className="flex flex-col sm:flex-row items-center justify-between text-sm gap-3">
-              <div className="flex flex-wrap items-center gap-3 text-forest-600 dark:text-forest-300">
+              <div className="flex flex-wrap items-center gap-3 text-forest-600">
                 <div className="flex items-center gap-2">
                   <span className="text-xs">🗺️</span>
                   <span className="font-medium">OpenStreetMap</span>
                 </div>
-                <span className="hidden sm:inline text-forest-300 dark:text-forest-600">•</span>
+                <span className="hidden sm:inline text-forest-300">•</span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs">📍</span>
                   <span className="font-medium">Southern California</span>
                 </div>
                 {routes.length > 0 && (
                   <>
-                    <span className="hidden sm:inline text-forest-300 dark:text-forest-600">•</span>
+                    <span className="hidden sm:inline text-forest-300">•</span>
                     <div className="flex items-center gap-2">
                       <span className="text-xs">✓</span>
-                      <span className="font-medium text-green-600 dark:text-green-400">{routes.length} route{routes.length !== 1 ? 's' : ''}</span>
+                      <span className="font-medium text-green-600">{routes.length} route{routes.length !== 1 ? 's' : ''}</span>
                     </div>
                   </>
                 )}
               </div>
-              <div className="text-xs text-forest-500 dark:text-forest-400 text-center sm:text-right">
+              <div className="text-xs text-forest-500 text-center sm:text-right">
                 Scroll to zoom • Drag to pan • Click route to select
               </div>
             </div>
