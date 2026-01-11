@@ -6,16 +6,21 @@ interface DrawingCanvasProps {
   onDrawingComplete: (coordinates: Array<{ x: number; y: number }>) => void
   width?: number
   height?: number
+  onDrawClick?: () => void
+  canDraw?: boolean
 }
 
 export default function DrawingCanvas({ 
   onDrawingComplete, 
   width = 400, 
-  height = 400 
+  height = 400,
+  onDrawClick,
+  canDraw = true
 }: DrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDrawingRef = useRef(false)
   const pointsRef = useRef<Array<{ x: number; y: number }>>([])
+  const [hasDrawing, setHasDrawing] = useState(false)
 
   // Initialize canvas
   useEffect(() => {
@@ -47,6 +52,7 @@ export default function DrawingCanvas({
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     pointsRef.current = []
     isDrawingRef.current = false
+    setHasDrawing(false)
   }
 
   // Get coordinates relative to canvas
@@ -140,13 +146,26 @@ export default function DrawingCanvas({
     if (!isDrawingRef.current) return
     isDrawingRef.current = false
 
-    // When drawing stops, process the points
+    // When drawing stops, keep the points but don't generate route yet
     if (pointsRef.current.length > 0) {
-      // Sample 1 out of every 4 coordinates
-      const sampledPoints = sampleCoordinates(pointsRef.current)
-      onDrawingComplete(sampledPoints)
-      // Reset points for next drawing
-      pointsRef.current = []
+      setHasDrawing(true)
+    }
+  }
+
+  // Handle Draw button click
+  const handleDrawClick = () => {
+    if (pointsRef.current.length < 2) {
+      alert('Please draw a route with at least 2 points')
+      return
+    }
+
+    // Sample 1 out of every 4 coordinates
+    const sampledPoints = sampleCoordinates(pointsRef.current)
+    onDrawingComplete(sampledPoints)
+    
+    // Call optional onDrawClick callback
+    if (onDrawClick) {
+      onDrawClick()
     }
   }
 
@@ -277,16 +296,27 @@ export default function DrawingCanvas({
           style={{ display: 'block' }}
         />
       </div>
-      <div className="flex gap-2">
-        <button
-          onClick={clearCanvas}
-          className="px-4 py-2 bg-forest-600 hover:bg-forest-700 text-white rounded-lg text-sm font-semibold transition-colors"
-        >
-          Clear Canvas
-        </button>
-        <p className="text-sm text-forest-600 dark:text-forest-300 px-4 py-2">
-          Draw your route shape
-        </p>
+      <div className="flex flex-col gap-3 w-full">
+        <div className="flex gap-2">
+          <button
+            onClick={clearCanvas}
+            className="flex-1 px-4 py-2 bg-forest-600 hover:bg-forest-700 text-white rounded-lg text-sm font-semibold transition-colors"
+          >
+            Clear
+          </button>
+          <button
+            onClick={handleDrawClick}
+            disabled={!hasDrawing || !canDraw}
+            className="flex-1 px-4 py-2 bg-orange-accent hover:bg-orange-dark disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold transition-colors"
+          >
+            Draw
+          </button>
+        </div>
+        {!hasDrawing && (
+          <p className="text-sm text-forest-600 dark:text-forest-300 text-center">
+            Draw your route shape on the canvas
+          </p>
+        )}
       </div>
     </div>
   )

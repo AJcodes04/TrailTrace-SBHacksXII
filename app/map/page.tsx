@@ -2,10 +2,14 @@
 
 import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import type { Route, Coordinate } from '@/types/route'
-import { snapToRoads, snapToNearestRoad, snapMultipleToNearestRoad, optimizeWaypointOrder } from '@/utils/routeHelpers'
+import { snapToRoads } from '@/utils/routeHelpers'
 import DrawingCanvas from '@/components/DrawingCanvas'
+import AuthWidget from '@/components/AuthWidget'
+import { auth } from '@/lib/firebaseClient'
+import { onAuthStateChanged } from 'firebase/auth'
 
 // Dynamically import the map component to avoid SSR issues with Leaflet
 const RouteMap = dynamic(() => import('@/components/RouteMap'), {
@@ -58,16 +62,28 @@ const exampleRoute: Route = {
 }
 
 export default function MapPage() {
-  const [routes, setRoutes] = useState<Route[]>([exampleRoute])
-  const [showExample, setShowExample] = useState(true)
-  const [isSnappedToRoads, setIsSnappedToRoads] = useState(false)
+  const router = useRouter()
+  const [routes, setRoutes] = useState<Route[]>([])
   const [isSnapping, setIsSnapping] = useState(false)
-  const [showWaypoints, setShowWaypoints] = useState(true)
-  const [waypoints, setWaypoints] = useState<Coordinate[]>(exampleRoute.coordinates)
-  const [draggableMode, setDraggableMode] = useState(false)
-  const [drawingMode, setDrawingMode] = useState(false)
   const [showCanvas, setShowCanvas] = useState(false)
+  const [currentRoute, setCurrentRoute] = useState<Route | null>(null)
   const [darkMode, setDarkMode] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [authLoading, setAuthLoading] = useState(true)
+
+  // Check authentication status
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsAuthenticated(true)
+      } else {
+        setIsAuthenticated(false)
+        router.push('/login')
+      }
+      setAuthLoading(false)
+    })
+    return () => unsub()
+  }, [router])
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode)
@@ -88,132 +104,19 @@ export default function MapPage() {
     west: -118.35,
   }
   
-  // Update waypoints when example route changes and snap them to intersections
-  useEffect(() => {
-    if (showExample) {
-      // Use batch snapping for better performance
-      const snapWaypoints = async () => {
-        const snappedWaypoints = await snapMultipleToNearestRoad(
-          exampleRoute.coordinates,
-          'walking',
-          10 // Process 10 waypoints at a time
-        )
-        setWaypoints(snappedWaypoints)
-        
-        // Update the route with snapped waypoints
-        const updatedRoute: Route = {
-          ...exampleRoute,
-          coordinates: snappedWaypoints,
-        }
-        setRoutes([updatedRoute])
-      }
-      snapWaypoints()
-    }
-  }, [showExample])
-
   const handleRouteClick = (route: Route) => {
     console.log('Route clicked:', route)
-    // Future: Could show route details or allow interaction
+    setCurrentRoute(route)
   }
 
-  const toggleExampleRoute = () => {
-    if (showExample) {
-      setRoutes([])
-      setIsSnappedToRoads(false)
-    } else {
-      setRoutes([exampleRoute])
-      setWaypoints(exampleRoute.coordinates)
-      setIsSnappedToRoads(false)
+  const handleSaveRoute = () => {
+    if (!currentRoute) {
+      alert('No route to save. Please draw a route first.')
+      return
     }
-    setShowExample(!showExample)
-  }
-
-  // Debounce timer for waypoint moves to avoid excessive API calls
-  const waypointMoveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
-  const handleWaypointMove = async (index: number, newPosition: Coordinate) => {
-    // Clear any pending snap operation
-    if (waypointMoveTimeoutRef.current) {
-      clearTimeout(waypointMoveTimeoutRef.current)
-    }
-    
-    // Update waypoint position immediately for responsive UI
-    const updatedWaypoints = [...waypoints]
-    updatedWaypoints[index] = newPosition
-    setWaypoints(updatedWaypoints)
-    
-    // Update route immediately with new position (straight line)
-    const updatedRoute: Route = {
-      ...exampleRoute,
-      coordinates: updatedWaypoints,
-    }
-    setRoutes([updatedRoute])
-    
-    // Debounce the snapping and re-routing (wait 300ms after last move)
-    waypointMoveTimeoutRef.current = setTimeout(async () => {
-      // Snap the waypoint to the nearest road intersection
-      const snappedPosition = await snapToNearestRoad(newPosition, 'walking', true)
-      
-      // Update with snapped position
-      const finalWaypoints = [...waypoints]
-      finalWaypoints[index] = snappedPosition
-      setWaypoints(finalWaypoints)
-      
-      // If route is snapped to roads, re-route with snapped waypoints
-      if (isSnappedToRoads) {
-        setIsSnapping(true)
-        try {
-          const snappedCoords = await snapToRoads(finalWaypoints, 'walking')
-          const snappedRoute: Route = {
-            ...exampleRoute,
-            coordinates: snappedCoords,
-            name: exampleRoute.name + ' (Road-Aligned)',
-          }
-          setRoutes([snappedRoute])
-        } catch (error) {
-          console.error('Failed to re-route:', error)
-        } finally {
-          setIsSnapping(false)
-        }
-      } else {
-        // Update route with snapped waypoints (straight lines)
-        const finalRoute: Route = {
-          ...exampleRoute,
-          coordinates: finalWaypoints,
-        }
-        setRoutes([finalRoute])
-      }
-    }, 300) // 300ms debounce
-  }
-
-  const toggleRoadSnapping = async () => {
-    if (isSnappedToRoads) {
-      // Revert to original route
-      const straightRoute: Route = {
-        ...exampleRoute,
-        coordinates: waypoints,
-      }
-      setRoutes([straightRoute])
-      setIsSnappedToRoads(false)
-    } else {
-      // Snap to roads
-      setIsSnapping(true)
-      try {
-        const snappedCoords = await snapToRoads(waypoints, 'walking')
-        const snappedRoute: Route = {
-          ...exampleRoute,
-          coordinates: snappedCoords,
-          name: exampleRoute.name + ' (Road-Aligned)',
-        }
-        setRoutes([snappedRoute])
-        setIsSnappedToRoads(true)
-      } catch (error) {
-        console.error('Failed to snap to roads:', error)
-        alert('Failed to snap route to roads. Please try again.')
-      } finally {
-        setIsSnapping(false)
-      }
-    }
+    // TODO: Implement save functionality (e.g., save to database, localStorage, etc.)
+    console.log('Saving route:', currentRoute)
+    alert('Route saved! (This is a placeholder - implement actual save functionality)')
   }
 
   // Convert canvas coordinates to geographic coordinates
@@ -259,9 +162,9 @@ export default function MapPage() {
         opacity: 0.8,
       }
 
-      // Add the new route to the routes array
-      setRoutes([...routes, newRoute])
-      setShowExample(false) // Hide example route if showing
+      // Replace all routes with the new route (only one route at a time)
+      setRoutes([newRoute])
+      setCurrentRoute(newRoute)
       setShowCanvas(false) // Close canvas after route generation
     } catch (error) {
       console.error('Failed to generate route from drawing:', error)
@@ -271,65 +174,75 @@ export default function MapPage() {
     }
   }
 
-  // Legacy handler for map drawing (keep for now)
-  const handleDrawingComplete = async (coordinates: Coordinate[]) => {
-    if (coordinates.length < 2) {
-      alert('Please draw a route with at least 2 points')
-      return
-    }
 
-    setIsSnapping(true)
-    setDrawingMode(false) // Exit drawing mode
-
-    try {
-      // Route the drawn coordinates through OSRM
-      const snappedCoords = await snapToRoads(coordinates, 'walking', true, true)
-      
-      const newRoute: Route = {
-        id: `route-${Date.now()}`,
-        name: 'Drawn Route',
-        coordinates: snappedCoords,
-        color: '#f97316', // TrailTrace orange
-        weight: 5,
-        opacity: 0.8,
-      }
-
-      // Add the new route to the routes array
-      setRoutes([...routes, newRoute])
-      setShowExample(false) // Hide example route if showing
-    } catch (error) {
-      console.error('Failed to generate route from drawing:', error)
-      alert('Failed to generate route. Please try again.')
-    } finally {
-      setIsSnapping(false)
-    }
+  const handleAuthSignOut = () => {
+    router.push('/')
   }
 
-  const handleSignOut = () => {
-    localStorage.removeItem('trailtrace_auth')
-    window.location.href = '/'
+  // Show loading state while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-stone-50 dark:bg-forest-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-forest-200 dark:border-forest-700 border-t-orange-accent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-forest-600 dark:text-forest-300">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Don't render if not authenticated (will redirect)
+  if (!isAuthenticated) {
+    return null
   }
 
   return (
     <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
-      <div className="flex flex-col lg:flex-row bg-stone-50 dark:bg-forest-900 text-forest-900 dark:text-stone-50 h-screen">
-        {/* Sidebar - Fixed on desktop */}
-        <aside className="w-full lg:w-64 lg:h-screen lg:sticky lg:top-0 bg-white dark:bg-forest-800 border-b lg:border-b-0 lg:border-r border-forest-200 dark:border-forest-700 flex flex-col z-50">
-          {/* Logo */}
-          <div className="p-6 border-b border-forest-200 dark:border-forest-700">
-            <div className="relative w-32 h-16 mb-3">
-              <Image
-                src="/images/logo.png"
-                alt="TrailTrace Logo"
-                fill
-                className="object-contain"
-                priority
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-white dark:bg-forest-800 border-b border-forest-200 dark:border-forest-700">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => router.push('/')}
+                className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+              >
+                <div className="relative w-24 h-12">
+                  <Image
+                    src="/images/logo.png"
+                    alt="TrailTrace Logo"
+                    fill
+                    className="object-contain"
+                    priority
+                  />
+                </div>
+                <p className="hidden sm:block text-sm text-forest-600 dark:text-forest-300 font-medium">
+                  Draw your path. Run your route.
+                </p>
+              </button>
+            </div>
+            
+            {/* Auth Widget */}
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => router.push('/')}
+                className="px-4 py-2 bg-forest-100 dark:bg-forest-700 hover:bg-forest-200 dark:hover:bg-forest-600 text-forest-700 dark:text-forest-200 rounded-lg font-semibold text-sm transition-colors"
+              >
+                Home
+              </button>
+              <AuthWidget
+                onSignOut={handleAuthSignOut}
+                variant="compact"
               />
             </div>
-            <p className="text-sm text-forest-600 dark:text-forest-300 font-medium">
-              Draw your path. Run your route.
-            </p>
           </div>
+        </div>
+      </header>
+
+      <div className="flex flex-col lg:flex-row bg-stone-50 dark:bg-forest-900 text-forest-900 dark:text-stone-50 h-[calc(100vh-4rem)]">
+        {/* Sidebar - Fixed on desktop */}
+        <aside className="w-full lg:w-64 lg:h-full lg:sticky lg:top-16 bg-white dark:bg-forest-800 border-b lg:border-b-0 lg:border-r border-forest-200 dark:border-forest-700 flex flex-col z-40">
 
           {/* Navigation */}
           <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
@@ -342,56 +255,17 @@ export default function MapPage() {
                   : 'hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200'
               } ${isSnapping ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
-              {showCanvas ? 'Close Canvas' : 'Draw Route'}
+              {showCanvas ? 'Close Canvas' : 'Map'}
             </button>
-            <button
-              onClick={toggleExampleRoute}
-              disabled={isSnapping || drawingMode}
-              className={`w-full text-left px-4 py-2 rounded-lg hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200 transition-colors ${
-                isSnapping || drawingMode ? 'opacity-60 cursor-not-allowed' : ''
-              }`}
-            >
-              {showExample ? 'Hide Example Route' : 'Show Example Route'}
-            </button>
-            {showExample && (
-              <>
-                <button
-                  onClick={toggleRoadSnapping}
-                  disabled={isSnapping}
-                  className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
-                    isSnappedToRoads
-                      ? 'bg-green-500 text-white hover:bg-green-600'
-                      : 'hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200'
-                  } ${isSnapping ? 'opacity-60 cursor-not-allowed' : ''}`}
-                >
-                  {isSnapping ? 'Snapping...' : isSnappedToRoads ? 'Show Straight Lines' : 'Snap to Roads'}
-                </button>
-                <button
-                  onClick={() => setShowWaypoints(!showWaypoints)}
-                  className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
-                    showWaypoints
-                      ? 'bg-red-500 text-white hover:bg-red-600'
-                      : 'hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200'
-                  }`}
-                >
-                  {showWaypoints ? 'Hide Waypoints' : 'Show Waypoints'}
-                </button>
-                <button
-                  onClick={() => setDraggableMode(!draggableMode)}
-                  disabled={!showWaypoints}
-                  className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
-                    draggableMode
-                      ? 'bg-amber-500 text-white hover:bg-amber-600'
-                      : 'hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200'
-                  } ${!showWaypoints ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {draggableMode ? 'Stop Moving Points' : 'Move Points'}
-                </button>
-              </>
+            
+            {currentRoute && (
+              <button
+                onClick={handleSaveRoute}
+                className="w-full px-4 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors text-sm font-semibold"
+              >
+                Save Route
+              </button>
             )}
-            <div className="px-4 py-2 text-sm text-forest-600 dark:text-forest-300">
-              Routes: <span className="font-semibold">{routes.length}</span>
-            </div>
           </nav>
 
           {/* Footer */}
@@ -401,12 +275,6 @@ export default function MapPage() {
               className="w-full px-4 py-2 rounded-lg bg-forest-100 dark:bg-forest-700 hover:bg-forest-200 dark:hover:bg-forest-600 text-forest-700 dark:text-forest-200 transition-colors text-sm"
             >
               {darkMode ? '☀️ Light mode' : '🌙 Dark mode'}
-            </button>
-            <button
-              onClick={handleSignOut}
-              className="w-full px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors text-sm font-semibold"
-            >
-              Sign Out
             </button>
             <div className="flex space-x-4 justify-center">
               <a href="#" className="text-forest-400 hover:text-orange-accent transition-colors">Twitter</a>
@@ -435,6 +303,7 @@ export default function MapPage() {
                   onDrawingComplete={handleCanvasDrawingComplete}
                   width={400}
                   height={400}
+                  canDraw={!isSnapping}
                 />
               </div>
             )}
@@ -443,15 +312,13 @@ export default function MapPage() {
             <div className="flex-1 relative">
               <RouteMap
                 routes={routes}
-                waypoints={showExample ? waypoints : []}
+                waypoints={[]}
                 center={{ lat: 34.0522, lng: -118.2437 }}
                 zoom={10}
                 onRouteClick={handleRouteClick}
-                showWaypoints={showWaypoints && !drawingMode}
-                draggableMode={draggableMode && showWaypoints && !drawingMode}
-                onWaypointMove={handleWaypointMove}
-                enableDrawing={drawingMode}
-                onDrawingComplete={handleDrawingComplete}
+                showWaypoints={false}
+                draggableMode={false}
+                enableDrawing={false}
               />
             </div>
           </div>
