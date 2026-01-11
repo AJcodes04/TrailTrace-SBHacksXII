@@ -160,7 +160,7 @@ function MapBoundsController({ routes, waypoints }: { routes?: Route[], waypoint
 export default function RouteMap({
   routes = [],
   waypoints = [],
-  center = { lat: 34.0522, lng: -118.2437 }, // Los Angeles area - center of Southern California
+  center = { lat: 34.4208, lng: -119.6982 }, // Santa Barbara area - center of Southern California
   zoom = 10,
   onRouteClick,
   showWaypoints = true,

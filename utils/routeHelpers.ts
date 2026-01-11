@@ -42,6 +42,126 @@ function distance(coord1: Coordinate, coord2: Coordinate): number {
   return R * c
 }
 
+/**
+ * Calculates the perpendicular distance from a point to a line segment
+ * Used to detect protrusions in the path
+ */
+function perpendicularDistance(
+  point: Coordinate,
+  lineStart: Coordinate,
+  lineEnd: Coordinate
+): number {
+  // Calculate the distance from point to the line segment
+  const A = point.lat - lineStart.lat
+  const B = point.lng - lineStart.lng
+  const C = lineEnd.lat - lineStart.lat
+  const D = lineEnd.lng - lineStart.lng
+  
+  const dot = A * C + B * D
+  const lenSq = C * C + D * D
+  let param = -1
+  
+  if (lenSq !== 0) {
+    param = dot / lenSq
+  }
+  
+  let xx: number, yy: number
+  
+  if (param < 0) {
+    xx = lineStart.lat
+    yy = lineStart.lng
+  } else if (param > 1) {
+    xx = lineEnd.lat
+    yy = lineEnd.lng
+  } else {
+    xx = lineStart.lat + param * C
+    yy = lineStart.lng + param * D
+  }
+  
+  const dx = point.lat - xx
+  const dy = point.lng - yy
+  return Math.sqrt(dx * dx + dy * dy) * 111 // Convert to approximate km (1 degree ≈ 111 km)
+}
+
+/**
+ * Smooths a path by removing small protrusions and unnecessary points
+ * Removes points that create small deviations from the overall path direction
+ * 
+ * @param coordinates - Array of coordinates to smooth
+ * @param maxDeviation - Maximum allowed deviation in km before removing a point (default: 0.02km = 20m)
+ * @returns Smoothed array of coordinates
+ */
+function smoothPath(
+  coordinates: Coordinate[],
+  maxDeviation: number = 0.02 // 20 meters
+): Coordinate[] {
+  if (coordinates.length <= 2) {
+    return coordinates
+  }
+  
+  const smoothed: Coordinate[] = [coordinates[0]] // Always keep first point
+  
+  for (let i = 1; i < coordinates.length - 1; i++) {
+    const prev = smoothed[smoothed.length - 1]
+    const current = coordinates[i]
+    const next = coordinates[i + 1]
+    
+    // Calculate perpendicular distance from current point to line from prev to next
+    const deviation = perpendicularDistance(current, prev, next)
+    
+    // If deviation is small, skip this point (it's a small protrusion)
+    if (deviation < maxDeviation) {
+      continue
+    }
+    
+    // Check if the angle is too sharp (indicates a protrusion)
+    const angle = calculateAngle(prev, current, next)
+    
+    // If angle is very sharp (< 30 degrees) and deviation is small, it's likely a protrusion
+    if (angle < 30 && deviation < maxDeviation * 2) {
+      continue
+    }
+    
+    smoothed.push(current)
+  }
+  
+  // Always keep last point
+  smoothed.push(coordinates[coordinates.length - 1])
+  
+  return smoothed
+}
+
+/**
+ * Calculates the angle between three points (in degrees)
+ * Returns the angle at the middle point
+ */
+function calculateAngle(
+  p1: Coordinate,
+  p2: Coordinate,
+  p3: Coordinate
+): number {
+  // Calculate vectors
+  const v1x = p1.lat - p2.lat
+  const v1y = p1.lng - p2.lng
+  const v2x = p3.lat - p2.lat
+  const v2y = p3.lng - p2.lng
+  
+  // Calculate dot product and magnitudes
+  const dot = v1x * v2x + v1y * v2y
+  const mag1 = Math.sqrt(v1x * v1x + v1y * v1y)
+  const mag2 = Math.sqrt(v2x * v2x + v2y * v2y)
+  
+  if (mag1 === 0 || mag2 === 0) {
+    return 180
+  }
+  
+  // Calculate angle in radians, then convert to degrees
+  const cosAngle = dot / (mag1 * mag2)
+  const clamped = Math.max(-1, Math.min(1, cosAngle)) // Clamp to avoid NaN
+  const angleRad = Math.acos(clamped)
+  return angleRad * (180 / Math.PI)
+}
+
 // Cache for snapped coordinates to avoid redundant API calls
 const snapCache = new Map<string, Coordinate>()
 
@@ -381,16 +501,123 @@ async function routeBetweenPoints(
     
     const geometry = bestRoute.geometry
     if (geometry.type === 'LineString' && geometry.coordinates) {
-      return geometry.coordinates.map((coord: [number, number]) => ({
+      const routeCoords = geometry.coordinates.map((coord: [number, number]) => ({
         lat: coord[1],
         lng: coord[0],
       }))
+      // Smooth the route to remove small protrusions
+      return smoothPath(routeCoords)
     }
     
     return [start, end]
   } catch (error) {
     console.error('Error routing between points:', error)
     return [start, end]
+  }
+}
+
+/**
+ * Optimizes waypoint order using Dijkstra's-like shortest path approach
+ * Finds the optimal order to visit waypoints that minimizes total distance
+ * Uses a nearest-neighbor heuristic with OSRM distance calculations
+ * 
+ * @param coordinates - Array of waypoint coordinates
+ * @param profile - OSRM profile to use
+ * @returns Promise resolving to optimized array of coordinates
+ */
+export async function optimizeWaypointOrder(
+  coordinates: Coordinate[],
+  profile: 'driving' | 'walking' | 'cycling' = 'walking'
+): Promise<Coordinate[]> {
+  if (coordinates.length <= 2) {
+    return coordinates
+  }
+  
+  try {
+    // Calculate distances between all pairs using OSRM
+    const distanceMatrix: number[][] = []
+    const distances = new Map<string, number>()
+    
+    // Build distance matrix (cache distances)
+    for (let i = 0; i < coordinates.length; i++) {
+      distanceMatrix[i] = []
+      for (let j = 0; j < coordinates.length; j++) {
+        if (i === j) {
+          distanceMatrix[i][j] = 0
+        } else {
+          const key = `${i}-${j}`
+          const reverseKey = `${j}-${i}`
+          
+          if (distances.has(key)) {
+            distanceMatrix[i][j] = distances.get(key)!
+          } else if (distances.has(reverseKey)) {
+            distanceMatrix[i][j] = distances.get(reverseKey)!
+          } else {
+            // Get route distance from OSRM
+            const waypoints = `${coordinates[i].lng},${coordinates[i].lat};${coordinates[j].lng},${coordinates[j].lat}`
+            const osrmUrl = `${OSRM_BASE_URL}/route/v1/${profile}/${waypoints}?overview=false&geometries=geojson&steps=false`
+            
+            try {
+              const response = await fetch(osrmUrl)
+              if (response.ok) {
+                const data = await response.json()
+                if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                  const dist = (data.routes[0].distance || 0) / 1000 // Convert to km
+                  distanceMatrix[i][j] = dist
+                  distances.set(key, dist)
+                } else {
+                  // Fallback to straight-line distance
+                  distanceMatrix[i][j] = distance(coordinates[i], coordinates[j])
+                }
+              } else {
+                distanceMatrix[i][j] = distance(coordinates[i], coordinates[j])
+              }
+            } catch {
+              distanceMatrix[i][j] = distance(coordinates[i], coordinates[j])
+            }
+            
+            // Small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 10))
+          }
+        }
+      }
+    }
+    
+    // Use nearest-neighbor heuristic (greedy approach like Dijkstra's)
+    // Start with first waypoint
+    const visited = new Set<number>([0])
+    const optimizedOrder: number[] = [0]
+    let current = 0
+    
+    // Find nearest unvisited neighbor for each step
+    while (visited.size < coordinates.length) {
+      let nearest = -1
+      let minDist = Infinity
+      
+      for (let i = 0; i < coordinates.length; i++) {
+        if (!visited.has(i)) {
+          const dist = distanceMatrix[current][i]
+          if (dist < minDist) {
+            minDist = dist
+            nearest = i
+          }
+        }
+      }
+      
+      if (nearest !== -1) {
+        optimizedOrder.push(nearest)
+        visited.add(nearest)
+        current = nearest
+      } else {
+        break
+      }
+    }
+    
+    // Return coordinates in optimized order
+    return optimizedOrder.map(index => coordinates[index])
+  } catch (error) {
+    console.error('Error optimizing waypoint order:', error)
+    return coordinates
   }
 }
 
@@ -416,16 +643,30 @@ export async function snapToRoads(
   coordinates: Coordinate[],
   profile: 'driving' | 'walking' | 'cycling' = 'walking',
   preserveShape: boolean = true,
-  avoidHighways: boolean = true
+  avoidHighways: boolean = true,
+  optimizeOrder: boolean = false
 ): Promise<Coordinate[]> {
   if (coordinates.length < 2) {
     return coordinates
   }
 
+  // Step 1: Optimize waypoint order using Dijkstra's-like approach (if requested)
+  let optimizedCoordinates = coordinates
+  if (optimizeOrder && coordinates.length > 2) {
+    try {
+      optimizedCoordinates = await optimizeWaypointOrder(coordinates, profile)
+      // Apply smoothing to waypoint positions after optimization
+      optimizedCoordinates = smoothPath(optimizedCoordinates, 0.03) // 30m smoothing threshold
+    } catch (error) {
+      console.warn('Waypoint order optimization failed, using original order:', error)
+      optimizedCoordinates = coordinates
+    }
+  }
+
   // If preserveShape is false, use simple routing but still prefer straight paths
   if (!preserveShape) {
     try {
-      const waypoints = coordinates.map(coord => `${coord.lng},${coord.lat}`).join(';')
+      const waypoints = optimizedCoordinates.map(coord => `${coord.lng},${coord.lat}`).join(';')
       // Use simplified overview and request alternatives for straighter paths
       // Request steps if we need to check for highways
       const steps = avoidHighways ? 'true' : 'false'
@@ -488,13 +729,15 @@ export async function snapToRoads(
       
       const geometry = bestRoute.geometry
       if (geometry.type === 'LineString' && geometry.coordinates) {
-        return geometry.coordinates.map((coord: [number, number]) => ({
+        const routeCoords = geometry.coordinates.map((coord: [number, number]) => ({
           lat: coord[1],
           lng: coord[0],
         }))
+        // Apply smoothing after routing
+        return smoothPath(routeCoords)
       }
       
-      return coordinates
+      return optimizedCoordinates
     } catch (error) {
       console.error('Error snapping to roads:', error)
       return coordinates
@@ -509,10 +752,10 @@ export async function snapToRoads(
     let consecutiveFailures = 0
     const maxFailures = 3
     
-    // Process each edge of the polygon
-    for (let i = 0; i < coordinates.length; i++) {
-      const start = coordinates[i]
-      const end = coordinates[(i + 1) % coordinates.length] // Wrap around for closed polygons
+    // Process each edge of the polygon using optimized coordinates
+    for (let i = 0; i < optimizedCoordinates.length; i++) {
+      const start = optimizedCoordinates[i]
+      const end = optimizedCoordinates[(i + 1) % optimizedCoordinates.length] // Wrap around for closed polygons
       
       // Calculate distance to determine if we need intermediate points
       const segmentDistance = distance(start, end)
@@ -580,7 +823,7 @@ export async function snapToRoads(
       
       // Reduced delay between polygon edges to speed up routing
       // Only delay if we have many edges to process
-      if (i < coordinates.length - 1 && coordinates.length > 3) {
+      if (i < optimizedCoordinates.length - 1 && optimizedCoordinates.length > 3) {
         await new Promise(resolve => setTimeout(resolve, 50)) // Reduced from 100ms
       }
     }
@@ -598,7 +841,11 @@ export async function snapToRoads(
       }
     }
     
-    return cleanedPoints.length > 0 ? cleanedPoints : coordinates
+    // Step 2: Apply smoothing after Dijkstra's optimization and routing
+    // This removes small protrusions and smooths the final path
+    const smoothedPoints = smoothPath(cleanedPoints, 0.02) // 20m smoothing threshold
+    
+    return smoothedPoints.length > 0 ? smoothedPoints : optimizedCoordinates
   } catch (error) {
     console.error('Error snapping to roads with shape preservation:', error)
     return coordinates
@@ -656,7 +903,7 @@ export function isValidRoute(route: Route): boolean {
  */
 export function getRouteCenter(route: Route): Coordinate {
   if (route.coordinates.length === 0) {
-    return { lat: 34.0522, lng: -118.2437 } // Default to LA
+    return { lat: 34.4208, lng: -119.6982 } // Default to Santa Barbara
   }
 
   const sumLat = route.coordinates.reduce((sum, coord) => sum + coord.lat, 0)

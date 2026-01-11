@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import type { Route, Coordinate } from '@/types/route'
-import { snapToRoads, snapToNearestRoad, snapMultipleToNearestRoad } from '@/utils/routeHelpers'
+import { snapToRoads, snapToNearestRoad, snapMultipleToNearestRoad, optimizeWaypointOrder } from '@/utils/routeHelpers'
 
 // Dynamically import the map component to avoid SSR issues with Leaflet
 const RouteMap = dynamic(() => import('@/components/RouteMap'), {
@@ -34,21 +34,21 @@ const RouteMap = dynamic(() => import('@/components/RouteMap'), {
 
 /**
  * Example route demonstrating polyline rendering
- * This represents a simple running loop in the Los Angeles area
+ * This represents a simple running loop in the Santa Barbara area
  */
 const exampleRoute: Route = {
   id: 'example-route-1',
   name: 'Example Running Loop',
   coordinates: [
-    { lat: 34.0522, lng: -118.2437 }, // Starting point
-    { lat: 34.0620, lng: -118.2500 },
-    { lat: 34.0700, lng: -118.2600 },
-    { lat: 34.0680, lng: -118.2700 },
-    { lat: 34.0580, lng: -118.2750 },
-    { lat: 34.0480, lng: -118.2700 },
-    { lat: 34.0420, lng: -118.2600 },
-    { lat: 34.0450, lng: -118.2500 },
-    { lat: 34.0522, lng: -118.2437 }, // Return to start
+    { lat: 34.4150, lng: -119.6900 }, // Starting point
+    { lat: 34.4250, lng: -119.7000 },
+    { lat: 34.4350, lng: -119.7100 },
+    { lat: 34.4320, lng: -119.7200 },
+    { lat: 34.4220, lng: -119.7250 },
+    { lat: 34.4120, lng: -119.7200 },
+    { lat: 34.4050, lng: -119.7100 },
+    { lat: 34.4080, lng: -119.7000 },
+    { lat: 34.4150, lng: -119.6900 }, // Return to start
   ],
   color: '#3b82f6',
   weight: 5,
@@ -349,7 +349,7 @@ export default function Home() {
         <RouteMap
           routes={routes}
           waypoints={showExample ? waypoints : []}
-          center={{ lat: 34.0522, lng: -118.2437 }}
+          center={{ lat: 34.4208, lng: -119.6982 }}
           zoom={10}
           onRouteClick={handleRouteClick}
           showWaypoints={showWaypoints}
