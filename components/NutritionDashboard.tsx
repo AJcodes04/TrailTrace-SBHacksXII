@@ -253,8 +253,8 @@ export default function NutritionDashboard() {
     if (state === 'loading') {
       return (
         <div className="flex flex-col items-center justify-center py-8 md:py-12">
-          <div className="animate-spin rounded-full h-10 w-10 md:h-12 md:w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-sm md:text-base text-gray-600">Loading nutrition data...</p>
+          <div className="animate-spin rounded-full h-10 w-10 md:h-12 md:w-12 border-b-2 border-orange-accent mb-4"></div>
+          <p className="text-sm md:text-base text-forest-600">Loading nutrition data...</p>
         </div>
       );
     }
@@ -296,13 +296,13 @@ export default function NutritionDashboard() {
           <div className="space-y-4 md:space-y-6">
             {/* Individual Items Display */}
             {multiItemData.items.length > 0 && (
-              <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">
+              <div className="bg-white border border-forest-200 rounded-lg p-4 md:p-6">
+                <h3 className="text-sm font-semibold text-forest-700 mb-4">
                   Items ({multiItemData.items.length}/5)
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {multiItemData.items.map((item, index) => (
-                    <div key={item.barcode} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                    <div key={item.barcode} className="flex items-start gap-3 p-3 bg-forest-50 rounded-lg">
                       {item.result.ok && item.result.product.imageUrl && (
                         <img
                           src={item.result.product.imageUrl}
@@ -315,15 +315,15 @@ export default function NutritionDashboard() {
                           <div className="flex-1 min-w-0">
                             {item.result.ok && item.result.product.name ? (
                               <>
-                                <p className="text-sm font-medium text-gray-900 break-words">
+                                <p className="text-sm font-medium text-forest-900 break-words">
                                   {item.result.product.name}
                                 </p>
-                                <p className="text-xs text-gray-500 mt-1">
+                                <p className="text-xs text-forest-500 mt-1">
                                   {item.barcode}
                                 </p>
                               </>
                             ) : (
-                              <p className="text-sm font-medium text-gray-900">
+                              <p className="text-sm font-medium text-forest-900">
                                 Item #{index + 1}
                               </p>
                             )}
@@ -340,8 +340,8 @@ export default function NutritionDashboard() {
                           </button>
                         </div>
                         <div className="flex items-center gap-1.5 mt-2">
-                          <label className="text-xs text-gray-600">Servings:</label>
-                          <div className="flex items-center border border-gray-300 rounded text-xs">
+                          <label className="text-xs text-forest-600">Servings:</label>
+                          <div className="flex items-center border border-forest-300 rounded text-xs">
                             <button
                               type="button"
                               onClick={() => {
@@ -352,12 +352,12 @@ export default function NutritionDashboard() {
                                   handleItemsChange(newItems);
                                 }
                               }}
-                              className="px-1 py-0.5 text-gray-700 hover:bg-gray-100 border-r border-gray-300"
+                              className="px-1 py-0.5 text-forest-700 hover:bg-forest-100 border-r border-forest-300"
                               aria-label="Decrease servings"
                             >
                               −
                             </button>
-                            <span className="px-1.5 py-0.5 text-gray-900 min-w-[1.25rem] text-center font-medium">
+                            <span className="px-1.5 py-0.5 text-forest-900 min-w-[1.25rem] text-center font-medium">
                               {item.servings}
                             </span>
                             <button
@@ -371,7 +371,7 @@ export default function NutritionDashboard() {
                                 }
                               }}
                               disabled={item.servings >= 20}
-                              className="px-1 py-0.5 text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed border-l border-gray-300"
+                              className="px-1 py-0.5 text-forest-700 hover:bg-forest-100 disabled:opacity-50 disabled:cursor-not-allowed border-l border-forest-300"
                               aria-label="Increase servings"
                             >
                               +
@@ -437,7 +437,7 @@ export default function NutritionDashboard() {
         <div className="space-y-4 md:space-y-6">
           {/* Product Information */}
           {(singleItemData.product.name || singleItemData.product.brand || singleItemData.product.imageUrl) && (
-            <div className="bg-white p-4 md:p-6 rounded-lg border border-gray-200 shadow-sm">
+            <div className="bg-white p-4 md:p-6 rounded-lg border border-forest-200 shadow-sm">
               <div className="flex items-start gap-3 md:gap-4">
                 {singleItemData.product.imageUrl && (
                   <img
@@ -448,10 +448,10 @@ export default function NutritionDashboard() {
                 )}
                 <div className="min-w-0 flex-1">
                   {singleItemData.product.name && (
-                    <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-1 break-words">{singleItemData.product.name}</h2>
+                    <h2 className="text-xl md:text-2xl font-bold text-forest-900 mb-1 break-words">{singleItemData.product.name}</h2>
                   )}
                   {singleItemData.product.brand && (
-                    <p className="text-base md:text-lg text-gray-600 break-words">{singleItemData.product.brand}</p>
+                    <p className="text-base md:text-lg text-forest-600 break-words">{singleItemData.product.brand}</p>
                   )}
                 </div>
               </div>
@@ -490,7 +490,7 @@ export default function NutritionDashboard() {
 
     // Idle state
     return (
-      <div className="text-center py-12 text-gray-500">
+      <div className="text-center py-12 text-forest-500">
         <p>Add items above to get started</p>
       </div>
     );

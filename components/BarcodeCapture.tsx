@@ -1293,7 +1293,7 @@ export default function BarcodeCapture({ onBarcodeSubmit, disabled = false }: Ba
     <div className="w-full max-w-2xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="barcode-input" className="block text-sm font-medium text-gray-700 mb-2">
+          <label htmlFor="barcode-input" className="block text-sm font-medium text-forest-700 mb-2">
             Barcode (UPC/GTIN)
           </label>
           <div className="flex gap-2">
@@ -1329,15 +1329,15 @@ export default function BarcodeCapture({ onBarcodeSubmit, disabled = false }: Ba
               {validationError}
             </p>
           )}
-          <p id="barcode-help" className="mt-2 text-sm text-gray-500">
+          <p id="barcode-help" className="mt-2 text-sm text-forest-500">
             Enter a barcode number (spaces and dashes will be removed automatically)
           </p>
         </div>
       </form>
 
       {/* Photo Upload Section */}
-      <div className="mt-6 pt-6 border-t border-gray-200">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+      <div className="mt-6 pt-6 border-t border-forest-200">
+        <label className="block text-sm font-medium text-forest-700 mb-2">
           Scan from Photo
         </label>
         <div className="space-y-2">
@@ -1398,7 +1398,7 @@ export default function BarcodeCapture({ onBarcodeSubmit, disabled = false }: Ba
               {decodeError}
             </p>
           )}
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-forest-500">
             Take or upload a photo of a barcode. Works best with clear, well-lit images.
           </p>
         </div>

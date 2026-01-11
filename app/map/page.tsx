@@ -210,7 +210,6 @@ export default function MapPage() {
                   : 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-md hover:from-orange-600 hover:to-orange-700 hover:shadow-lg'
               } ${(isSnapping || selectingStartPoint) ? 'opacity-50 cursor-not-allowed' : 'transform hover:scale-[1.02]'}`}
             >
-              <span className="text-lg">{showCanvas ? '✕' : '✏️'}</span>
               <span>{showCanvas ? 'Close Drawing' : 'Draw New Route'}</span>
             </button>
             
@@ -231,7 +230,6 @@ export default function MapPage() {
               <div className="px-4 py-4 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <span className="text-xl">🗺️</span>
                     <h3 className="font-semibold text-forest-900">Route Created</h3>
                   </div>
                   <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
@@ -241,10 +239,9 @@ export default function MapPage() {
                 </p>
                 <button
                   onClick={handleSaveRoute}
-                  className="w-full px-4 py-2.5 rounded-lg bg-green-600 hover:bg-green-700 text-white transition-all font-semibold text-sm shadow-md hover:shadow-lg transform hover:scale-[1.02] flex items-center justify-center gap-2"
+                  className="w-full px-4 py-2.5 rounded-lg bg-green-600 hover:bg-green-700 text-white transition-all font-semibold text-sm shadow-md hover:shadow-lg transform hover:scale-[1.02]"
                 >
-                  <span>💾</span>
-                  <span>Save Route</span>
+                  Save Route
                 </button>
               </div>
             )}
@@ -284,7 +281,6 @@ export default function MapPage() {
               <div className="w-full lg:w-[480px] bg-white border-r border-forest-200 shadow-xl z-10 flex flex-col">
                 <div className="p-6 border-b border-forest-200 bg-gradient-to-r from-orange-50 to-orange-100">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="text-2xl">🎨</span>
                     <h2 className="text-2xl font-bold text-forest-900">
                       Draw Your Route
                     </h2>
@@ -309,7 +305,6 @@ export default function MapPage() {
               {selectingStartPoint && (
                 <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-[1000] bg-gradient-to-r from-orange-500 to-orange-600 text-white px-8 py-5 rounded-2xl shadow-2xl border-4 border-white max-w-md animate-pulse-slow">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="text-3xl">📍</span>
                     <div>
                       <p className="text-xl font-bold mb-1">
                         Select Your Start Point
@@ -346,19 +341,16 @@ export default function MapPage() {
             <div className="flex flex-col sm:flex-row items-center justify-between text-sm gap-3">
               <div className="flex flex-wrap items-center gap-3 text-forest-600">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs">🗺️</span>
                   <span className="font-medium">OpenStreetMap</span>
                 </div>
                 <span className="hidden sm:inline text-forest-300">•</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs">📍</span>
                   <span className="font-medium">Southern California</span>
                 </div>
                 {routes.length > 0 && (
                   <>
                     <span className="hidden sm:inline text-forest-300">•</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs">✓</span>
                       <span className="font-medium text-green-600">{routes.length} route{routes.length !== 1 ? 's' : ''}</span>
                     </div>
                   </>

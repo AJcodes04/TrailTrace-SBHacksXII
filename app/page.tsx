@@ -109,54 +109,26 @@ export default function Home() {
                 whileHover={{ scale: 1.05 }}
                 className="px-4 py-2 bg-forest-100 text-forest-700 rounded-full text-sm font-medium"
               >
-                ✏️ Draw anything
+                Draw anything
               </motion.span>
               <motion.span
                 whileHover={{ scale: 1.05 }}
                 className="px-4 py-2 bg-green-100 text-green-800 rounded-full text-sm font-medium"
               >
-                🛡️ Safety-first
+                Safety-first
               </motion.span>
               <motion.span
                 whileHover={{ scale: 1.05 }}
                 className="px-4 py-2 bg-orange-100 text-orange-800 rounded-full text-sm font-medium"
               >
-                👥 Share routes
+                Share routes
               </motion.span>
               <motion.span
                 whileHover={{ scale: 1.05 }}
                 className="px-4 py-2 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
               >
-                📊 Track nutrition
+                Track nutrition
               </motion.span>
-            </motion.div>
-
-            {/* MacroScanner Feature Highlight */}
-            <motion.div
-              variants={itemVariants}
-              className="mt-8 p-6 bg-gradient-to-br from-forest-50 to-orange-50 rounded-2xl border border-forest-200"
-            >
-              <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 w-12 h-12 bg-orange-accent rounded-xl flex items-center justify-center text-2xl">
-                  📱
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-xl font-bold text-forest-900 mb-2">
-                    MacroScanner
-                  </h3>
-                  <p className="text-forest-600 text-sm mb-4">
-                    Fuel your runs with intelligent nutrition tracking. Scan barcodes, analyze macros, and get personalized scoring.
-                  </p>
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleMacroScanner}
-                    className="px-6 py-2.5 bg-forest-700 hover:bg-forest-800 text-white rounded-lg font-semibold text-sm transition-all shadow-md hover:shadow-lg"
-                  >
-                    Try MacroScanner →
-                  </motion.button>
-                </div>
-              </div>
             </motion.div>
           </motion.div>
         </motion.div>

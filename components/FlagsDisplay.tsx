@@ -25,9 +25,8 @@ export default function FlagsDisplay({ flags, context }: FlagsDisplayProps) {
     <div className="space-y-3 md:space-y-4">
       {cautionFlags.length > 0 && (
         <div className="bg-yellow-50 p-3 md:p-4 rounded-lg border border-yellow-200">
-          <h3 className="text-xs md:text-sm font-semibold text-yellow-800 mb-2 flex items-center gap-2">
-            <span>⚠️</span>
-            <span>Caution Flags</span>
+          <h3 className="text-xs md:text-sm font-semibold text-yellow-800 mb-2">
+            Caution Flags
           </h3>
           <ul className="space-y-2">
             {cautionFlags.map((flag, index) => (
@@ -41,9 +40,8 @@ export default function FlagsDisplay({ flags, context }: FlagsDisplayProps) {
 
       {infoFlags.length > 0 && (
         <div className="bg-blue-50 p-3 md:p-4 rounded-lg border border-blue-200">
-          <h3 className="text-xs md:text-sm font-semibold text-blue-800 mb-2 flex items-center gap-2">
-            <span>ℹ️</span>
-            <span>Information Flags</span>
+          <h3 className="text-xs md:text-sm font-semibold text-blue-800 mb-2">
+            Information Flags
           </h3>
           <ul className="space-y-2">
             {infoFlags.map((flag, index) => (

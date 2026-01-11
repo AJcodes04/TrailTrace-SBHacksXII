@@ -135,7 +135,7 @@ export default function ScoringCard({ score, flags = [] }: ScoringCardProps) {
       {(penalties.length > 0 || cautionFlags.length > 0) && (
         <div className="mt-3 pt-3 border-t border-red-200">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-xs font-semibold text-red-600">⚠️ Issues</span>
+            <span className="text-xs font-semibold text-red-600">Issues</span>
             <span className="text-xs text-gray-500">
               ({penalties.length + cautionFlags.length})
             </span>

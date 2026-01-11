@@ -45,7 +45,7 @@ export default function MultiItemManager({ items, onItemsChange, maxItems = 5 }:
             disabled={false}
           />
           {items.length > 0 && (
-            <p className="text-xs text-gray-500 mt-2 text-center">
+            <p className="text-xs text-forest-500 mt-2 text-center">
               Add up to {maxItems - items.length} more item{maxItems - items.length !== 1 ? 's' : ''}
             </p>
           )}
