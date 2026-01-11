@@ -136,28 +136,15 @@ function LandingPage({ onSignIn }: LandingPageProps) {
                 <div className="relative">
                   <div className="relative bg-white dark:bg-forest-800 rounded-3xl shadow-2xl p-6 transform rotate-3 hover:rotate-6 transition-transform duration-300">
                     {/* Mock Map */}
-                    <div className="aspect-square bg-gradient-to-br from-forest-100 to-forest-200 dark:from-forest-700 dark:to-forest-600 rounded-2xl relative overflow-hidden">
+                    <div className="aspect-square rounded-2xl relative overflow-hidden bg-white dark:bg-forest-700">
                       {/* Route Path */}
-                      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 200 200">
-                        <path
-                          d="M 50 100 Q 75 50, 100 100 T 150 100"
-                          fill="none"
-                          stroke="#f97316"
-                          strokeWidth="4"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      {/* Friend Avatars */}
-                      <div className="absolute top-1/4 left-1/3 w-8 h-8 bg-blue-500 rounded-full border-2 border-white"></div>
-                      <div className="absolute bottom-1/4 right-1/3 w-8 h-8 bg-green-500 rounded-full border-2 border-white"></div>
+                      <Image
+                        src="/images/StravaArtExample.png"
+                        alt="TrailTrace route example"
+                        fill
+                        className="object-cover"
+                      />
                     </div>
-                  </div>
-                  {/* Floating Badges */}
-                  <div className="absolute -top-4 -right-4 bg-white dark:bg-forest-800 px-4 py-2 rounded-full shadow-lg border border-forest-200 dark:border-forest-700 animate-float">
-                    <span className="text-sm font-semibold text-forest-700 dark:text-forest-200">5k campus loop</span>
-                  </div>
-                  <div className="absolute -bottom-4 -left-4 bg-green-500 text-white px-4 py-2 rounded-full shadow-lg animate-float" style={{ animationDelay: '1s' }}>
-                    <span className="text-sm font-semibold">Safety score 92</span>
                   </div>
                 </div>
               </div>
@@ -369,24 +356,6 @@ function LandingPage({ onSignIn }: LandingPageProps) {
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Testimonial Section */}
-          <section className="relative z-10 px-6 lg:px-12 py-20 bg-gradient-to-br from-forest-700 via-forest-800 to-forest-900 text-white">
-            <div className="max-w-4xl mx-auto text-center">
-              <blockquote className="text-3xl lg:text-4xl font-medium mb-8 italic">
-                &quot;TrailTrace turned runs into something I actually look forward to.&quot;
-              </blockquote>
-              <div className="flex items-center justify-center gap-4">
-                <div className="w-16 h-16 bg-orange-accent rounded-full flex items-center justify-center text-2xl">
-                  🏃
-                </div>
-                <div className="text-left">
-                  <p className="font-semibold text-lg">Sarah Chen</p>
-                  <p className="text-forest-300">UCSB Runner</p>
                 </div>
               </div>
             </div>
