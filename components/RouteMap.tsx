@@ -3,38 +3,8 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
+import 'leaflet-draw'
 import type { Route, Coordinate } from '@/types/route'
-
-/**
- * Calculate distance between two coordinates using Haversine formula (in kilometers)
- */
-function calculateDistance(coord1: Coordinate, coord2: Coordinate): number {
-  const R = 6371 // Earth's radius in km
-  const dLat = (coord2.lat - coord1.lat) * Math.PI / 180
-  const dLng = (coord2.lng - coord1.lng) * Math.PI / 180
-  const a = 
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(coord1.lat * Math.PI / 180) * Math.cos(coord2.lat * Math.PI / 180) *
-    Math.sin(dLng / 2) * Math.sin(dLng / 2)
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return R * c
-}
-
-/**
- * Calculate bearing (direction) from coord1 to coord2 in degrees
- * 0° = North, 90° = East, 180° = South, 270° = West
- */
-function calculateBearing(coord1: Coordinate, coord2: Coordinate): number {
-  const lat1 = coord1.lat * Math.PI / 180
-  const lat2 = coord2.lat * Math.PI / 180
-  const dLng = (coord2.lng - coord1.lng) * Math.PI / 180
-  
-  const y = Math.sin(dLng) * Math.cos(lat2)
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
-  
-  const bearing = Math.atan2(y, x) * 180 / Math.PI
-  return (bearing + 360) % 360 // Normalize to 0-360
-}
 
 // Fix for default marker icons in Next.js/SSR
 if (typeof window !== 'undefined') {
@@ -55,8 +25,8 @@ interface RouteMapProps {
   showWaypoints?: boolean // Toggle to show/hide waypoint markers
   draggableMode?: boolean // Enable/disable waypoint dragging
   onWaypointMove?: (index: number, newPosition: Coordinate) => void // Callback when a waypoint is moved
-  showDebugVertices?: boolean // Debug: Show all route vertices as small markers
-  currentVertexIndex?: number | null // Index of currently selected vertex for navigation
+  enableDrawing?: boolean // Enable drawing mode
+  onDrawingComplete?: (coordinates: Coordinate[]) => void // Callback when user finishes drawing
 }
 
 /**
@@ -152,26 +122,91 @@ function MapBoundsController({ routes, waypoints }: { routes?: Route[], waypoint
 }
 
 /**
- * Component to zoom to a specific vertex when currentVertexIndex changes
+ * Component to handle drawing on the map using Leaflet Draw
  */
-function VertexZoomController({ 
-  routes, 
-  currentVertexIndex 
+function DrawingController({ 
+  enableDrawing, 
+  onDrawingComplete 
 }: { 
-  routes?: Route[]
-  currentVertexIndex: number | null 
+  enableDrawing?: boolean
+  onDrawingComplete?: (coordinates: Coordinate[]) => void 
 }) {
   const map = useMap()
+  const drawControlRef = useRef<L.Control.Draw | null>(null)
+  const drawnItemsRef = useRef<L.FeatureGroup>(new L.FeatureGroup())
 
   useEffect(() => {
-    if (currentVertexIndex !== null && currentVertexIndex !== undefined && routes && routes.length > 0) {
-      const route = routes[0]
-      if (currentVertexIndex >= 0 && currentVertexIndex < route.coordinates.length) {
-        const vertex = route.coordinates[currentVertexIndex]
-        map.setView([vertex.lat, vertex.lng], 16, { animate: true })
+    if (!enableDrawing || !onDrawingComplete) return
+
+    // Add drawn items layer to map
+    const drawnItems = drawnItemsRef.current
+    drawnItems.addTo(map)
+
+    // Configure draw control - only allow polylines for route drawing
+    const drawControl = new (L.Control as any).Draw({
+      draw: {
+        polyline: {
+          shapeOptions: {
+            color: '#f97316', // TrailTrace orange
+            weight: 4,
+          },
+          allowIntersection: true,
+          showLength: true,
+        },
+        polygon: false,
+        circle: false,
+        rectangle: false,
+        marker: false,
+        circlemarker: false,
+      },
+      edit: {
+        featureGroup: drawnItems,
+        remove: true,
+      },
+    })
+
+    drawControlRef.current = drawControl
+    map.addControl(drawControl)
+
+    // Handle drawing completion
+    const handleDrawCreated = (e: any) => {
+      const layer = e.layer
+      const geoJSON = layer.toGeoJSON()
+
+      // Extract coordinates from the drawn polyline
+      if (geoJSON.geometry.type === 'LineString' && geoJSON.geometry.coordinates) {
+        const coordinates: Coordinate[] = geoJSON.geometry.coordinates.map(
+          ([lng, lat]: [number, number]) => ({
+            lat,
+            lng,
+          })
+        )
+
+        // Call callback with coordinates
+        onDrawingComplete(coordinates)
+
+        // Remove the drawn layer (we'll display the routed version instead)
+        map.removeLayer(layer)
       }
     }
-  }, [currentVertexIndex, routes, map])
+
+    // Handle draw deletion
+    const handleDrawDeleted = () => {
+      drawnItems.clearLayers()
+    }
+
+    map.on((L.Draw as any).Event.CREATED, handleDrawCreated)
+    map.on((L.Draw as any).Event.DELETED, handleDrawDeleted)
+
+    return () => {
+      if (drawControlRef.current) {
+        map.removeControl(drawControlRef.current)
+      }
+      map.off((L.Draw as any).Event.CREATED, handleDrawCreated)
+      map.off((L.Draw as any).Event.DELETED, handleDrawDeleted)
+      map.removeLayer(drawnItems)
+    }
+  }, [map, enableDrawing, onDrawingComplete])
 
   return null
 }
@@ -199,8 +234,9 @@ export default function RouteMap({
   showWaypoints = true,
   draggableMode = false,
   onWaypointMove,
-  showDebugVertices = false,
-  currentVertexIndex = null,
+
+  enableDrawing = false,
+  onDrawingComplete,
 }: RouteMapProps) {
   
   // Default route color and style
@@ -239,35 +275,6 @@ export default function RouteMap({
     "></div>`,
     iconSize: [18, 18],
     iconAnchor: [9, 9],
-  })
-
-  // Debug: Small icon for route vertices
-  const debugVertexIcon = L.divIcon({
-    className: 'debug-vertex-marker',
-    html: `<div style="
-      width: 4px;
-      height: 4px;
-      background: #10b981;
-      border: 1px solid white;
-      border-radius: 50%;
-    "></div>`,
-    iconSize: [4, 4],
-    iconAnchor: [2, 2],
-  })
-
-  // Highlighted vertex icon (larger, different color)
-  const highlightedVertexIcon = L.divIcon({
-    className: 'highlighted-vertex-marker',
-    html: `<div style="
-      width: 16px;
-      height: 16px;
-      background: #f59e0b;
-      border: 3px solid white;
-      border-radius: 50%;
-      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.6);
-    "></div>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8],
   })
 
   return (
@@ -316,69 +323,6 @@ export default function RouteMap({
                 },
               }}
             />
-            {/* Debug: Render all route vertices as small markers */}
-            {showDebugVertices && route.coordinates.map((coord, vertexIndex) => {
-              // Calculate edge information for this vertex
-              const prevIndex = vertexIndex > 0 ? vertexIndex - 1 : route.coordinates.length - 1
-              const nextIndex = (vertexIndex + 1) % route.coordinates.length
-              const prevCoord = route.coordinates[prevIndex]
-              const nextCoord = route.coordinates[nextIndex]
-              
-              // Calculate distances (Haversine formula)
-              const distanceToPrev = calculateDistance(prevCoord, coord)
-              const distanceToNext = calculateDistance(coord, nextCoord)
-              
-              // Calculate bearings (directions)
-              const bearingFromPrev = calculateBearing(prevCoord, coord)
-              const bearingToNext = calculateBearing(coord, nextCoord)
-              
-              // Use highlighted icon if this is the current vertex
-              const isCurrentVertex = currentVertexIndex !== null && vertexIndex === currentVertexIndex
-              const iconToUse = isCurrentVertex ? highlightedVertexIcon : debugVertexIcon
-              
-              return (
-                <Marker
-                  key={`vertex-${index}-${vertexIndex}`}
-                  position={[coord.lat, coord.lng]}
-                  icon={iconToUse}
-                >
-                  <Popup>
-                    <div style={{ minWidth: '200px' }}>
-                      <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
-                        Vertex {vertexIndex + 1} / {route.coordinates.length}
-                        {isCurrentVertex && (
-                          <span style={{ 
-                            marginLeft: '8px', 
-                            color: '#f59e0b',
-                            fontSize: '12px'
-                          }}>● Current</span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '12px', marginBottom: '8px', color: '#6b7280' }}>
-                        {coord.lat.toFixed(6)}, {coord.lng.toFixed(6)}
-                      </div>
-                      <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '8px', marginTop: '8px' }}>
-                        <div style={{ fontWeight: '600', marginBottom: '4px' }}>Edges:</div>
-                        <div style={{ fontSize: '12px', marginBottom: '4px' }}>
-                          <span style={{ color: '#6b7280' }}>From Vertex {prevIndex + 1}:</span><br/>
-                          <span style={{ marginLeft: '8px' }}>
-                            Distance: {distanceToPrev.toFixed(2)} km<br/>
-                            Bearing: {bearingFromPrev.toFixed(1)}°
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '12px' }}>
-                          <span style={{ color: '#6b7280' }}>To Vertex {nextIndex + 1}:</span><br/>
-                          <span style={{ marginLeft: '8px' }}>
-                            Distance: {distanceToNext.toFixed(2)} km<br/>
-                            Bearing: {bearingToNext.toFixed(1)}°
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </Popup>
-                </Marker>
-              )
-            })}
           </React.Fragment>
         )
       })}
@@ -388,9 +332,12 @@ export default function RouteMap({
         <MapBoundsController routes={routes} waypoints={waypoints} />
       )}
 
-      {/* Zoom to current vertex when index changes */}
-      {currentVertexIndex !== null && (
-        <VertexZoomController routes={routes} currentVertexIndex={currentVertexIndex} />
+      {/* Drawing controller */}
+      {enableDrawing && (
+        <DrawingController 
+          enableDrawing={enableDrawing}
+          onDrawingComplete={onDrawingComplete}
+        />
       )}
     </MapContainer>
   )

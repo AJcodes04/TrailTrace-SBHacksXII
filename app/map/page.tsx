@@ -34,28 +34,28 @@ const RouteMap = dynamic(() => import('@/components/RouteMap'), {
 
 /**
  * Example route demonstrating polyline rendering
- * This represents a simple running loop in the Los Angeles area
+ * This represents a simple running loop in the Santa Barbara area
  */
 const exampleRoute: Route = {
   id: 'example-route-1',
   name: 'Example Running Loop',
   coordinates: [
-    { lat: 34.0522, lng: -118.2437 }, // Starting point (Downtown LA)
-    { lat: 34.0622, lng: -118.2537 },
-    { lat: 34.0722, lng: -118.2637 },
-    { lat: 34.0692, lng: -118.2737 },
-    { lat: 34.0592, lng: -118.2787 },
-    { lat: 34.0492, lng: -118.2737 },
-    { lat: 34.0422, lng: -118.2637 },
-    { lat: 34.0452, lng: -118.2537 },
-    { lat: 34.0522, lng: -118.2437 }, // Return to start
+    { lat: 34.4150, lng: -119.6900 }, // Starting point
+    { lat: 34.4250, lng: -119.7000 },
+    { lat: 34.4350, lng: -119.7100 },
+    { lat: 34.4320, lng: -119.7200 },
+    { lat: 34.4220, lng: -119.7250 },
+    { lat: 34.4120, lng: -119.7200 },
+    { lat: 34.4050, lng: -119.7100 },
+    { lat: 34.4080, lng: -119.7000 },
+    { lat: 34.4150, lng: -119.6900 }, // Return to start
   ],
   color: '#3b82f6',
   weight: 5,
   opacity: 0.8,
 }
 
-export default function Home() {
+export default function MapPage() {
   const [routes, setRoutes] = useState<Route[]>([exampleRoute])
   const [showExample, setShowExample] = useState(true)
   const [isSnappedToRoads, setIsSnappedToRoads] = useState(false)
@@ -63,6 +63,7 @@ export default function Home() {
   const [showWaypoints, setShowWaypoints] = useState(true)
   const [waypoints, setWaypoints] = useState<Coordinate[]>(exampleRoute.coordinates)
   const [draggableMode, setDraggableMode] = useState(false)
+  const [drawingMode, setDrawingMode] = useState(false)
   
   // Update waypoints when example route changes and snap them to intersections
   useEffect(() => {
@@ -75,7 +76,7 @@ export default function Home() {
           10 // Process 10 waypoints at a time
         )
         setWaypoints(snappedWaypoints)
-
+        
         // Update the route with snapped waypoints
         const updatedRoute: Route = {
           ...exampleRoute,
@@ -112,22 +113,29 @@ export default function Home() {
     if (waypointMoveTimeoutRef.current) {
       clearTimeout(waypointMoveTimeoutRef.current)
     }
-
-    // Update the UI immediately with the new position
-    const updatedWaypointsUI = [...waypoints]
-    updatedWaypointsUI[index] = newPosition
-    setWaypoints(updatedWaypointsUI)
-
-    // Debounce the actual snapping and re-routing
+    
+    // Update waypoint position immediately for responsive UI
+    const updatedWaypoints = [...waypoints]
+    updatedWaypoints[index] = newPosition
+    setWaypoints(updatedWaypoints)
+    
+    // Update route immediately with new position (straight line)
+    const updatedRoute: Route = {
+      ...exampleRoute,
+      coordinates: updatedWaypoints,
+    }
+    setRoutes([updatedRoute])
+    
+    // Debounce the snapping and re-routing (wait 300ms after last move)
     waypointMoveTimeoutRef.current = setTimeout(async () => {
-      // First, snap the waypoint to the nearest road intersection
+      // Snap the waypoint to the nearest road intersection
       const snappedPosition = await snapToNearestRoad(newPosition, 'walking', true)
-
+      
       // Update with snapped position
       const finalWaypoints = [...waypoints]
       finalWaypoints[index] = snappedPosition
       setWaypoints(finalWaypoints)
-
+      
       // If route is snapped to roads, re-route with snapped waypoints
       if (isSnappedToRoads) {
         setIsSnapping(true)
@@ -145,12 +153,12 @@ export default function Home() {
           setIsSnapping(false)
         }
       } else {
-        // Update route with new waypoints (straight lines)
-        const updatedRoute: Route = {
+        // Update route with snapped waypoints (straight lines)
+        const finalRoute: Route = {
           ...exampleRoute,
           coordinates: finalWaypoints,
         }
-        setRoutes([updatedRoute])
+        setRoutes([finalRoute])
       }
     }, 300) // 300ms debounce
   }
@@ -185,6 +193,44 @@ export default function Home() {
     }
   }
 
+  const handleDrawingComplete = async (coordinates: Coordinate[]) => {
+    if (coordinates.length < 2) {
+      alert('Please draw a route with at least 2 points')
+      return
+    }
+
+    setIsSnapping(true)
+    setDrawingMode(false) // Exit drawing mode
+
+    try {
+      // Route the drawn coordinates through OSRM
+      const snappedCoords = await snapToRoads(coordinates, 'walking', true, true)
+      
+      const newRoute: Route = {
+        id: `route-${Date.now()}`,
+        name: 'Drawn Route',
+        coordinates: snappedCoords,
+        color: '#f97316', // TrailTrace orange
+        weight: 5,
+        opacity: 0.8,
+      }
+
+      // Add the new route to the routes array
+      setRoutes([...routes, newRoute])
+      setShowExample(false) // Hide example route if showing
+    } catch (error) {
+      console.error('Failed to generate route from drawing:', error)
+      alert('Failed to generate route. Please try again.')
+    } finally {
+      setIsSnapping(false)
+    }
+  }
+
+  const handleSignOut = () => {
+    localStorage.removeItem('trailtrace_auth')
+    window.location.href = '/'
+  }
+
   return (
     <main style={{
       display: 'flex',
@@ -215,7 +261,7 @@ export default function Home() {
             <p style={{
               fontSize: '14px',
               color: '#4b5563',
-            }}>Running Route Generator - Los Angeles</p>
+            }}>Running Route Generator - Southern California</p>
           </div>
           <div style={{
             display: 'flex',
@@ -223,11 +269,11 @@ export default function Home() {
             gap: '16px',
           }}>
             <button
-              onClick={toggleExampleRoute}
+              onClick={() => setDrawingMode(!drawingMode)}
               disabled={isSnapping}
               style={{
                 padding: '8px 16px',
-                background: '#2563eb',
+                background: drawingMode ? '#f97316' : '#2563eb',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
@@ -237,8 +283,44 @@ export default function Home() {
                 transition: 'background-color 0.2s',
                 opacity: isSnapping ? 0.6 : 1,
               }}
-              onMouseOver={(e) => !isSnapping && (e.currentTarget.style.background = '#1d4ed8')}
-              onMouseOut={(e) => !isSnapping && (e.currentTarget.style.background = '#2563eb')}
+              onMouseOver={(e) => {
+                if (!isSnapping) {
+                  e.currentTarget.style.background = drawingMode ? '#ea580c' : '#1d4ed8'
+                }
+              }}
+              onMouseOut={(e) => {
+                if (!isSnapping) {
+                  e.currentTarget.style.background = drawingMode ? '#f97316' : '#2563eb'
+                }
+              }}
+            >
+              {drawingMode ? 'Stop Drawing' : 'Draw Route'}
+            </button>
+            <button
+              onClick={toggleExampleRoute}
+              disabled={isSnapping || drawingMode}
+              style={{
+                padding: '8px 16px',
+                background: '#6b7280',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: (isSnapping || drawingMode) ? 'not-allowed' : 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                transition: 'background-color 0.2s',
+                opacity: (isSnapping || drawingMode) ? 0.6 : 1,
+              }}
+              onMouseOver={(e) => {
+                if (!isSnapping && !drawingMode) {
+                  e.currentTarget.style.background = '#4b5563'
+                }
+              }}
+              onMouseOut={(e) => {
+                if (!isSnapping && !drawingMode) {
+                  e.currentTarget.style.background = '#6b7280'
+                }
+              }}
             >
               {showExample ? 'Hide Example Route' : 'Show Example Route'}
             </button>
@@ -330,6 +412,28 @@ export default function Home() {
             }}>
               Routes: <span style={{ fontWeight: '600' }}>{routes.length}</span>
             </div>
+            <button
+              onClick={handleSignOut}
+              style={{
+                padding: '8px 16px',
+                background: '#ef4444',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                transition: 'background-color 0.2s',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = '#dc2626'
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = '#ef4444'
+              }}
+            >
+              Sign Out
+            </button>
           </div>
         </div>
       </header>
@@ -342,12 +446,14 @@ export default function Home() {
         <RouteMap
           routes={routes}
           waypoints={showExample ? waypoints : []}
-          center={{ lat: 34.0522, lng: -118.2437 }}
-          zoom={11}
+          center={{ lat: 34.4208, lng: -119.6982 }}
+          zoom={10}
           onRouteClick={handleRouteClick}
-          showWaypoints={showWaypoints}
-          draggableMode={draggableMode && showWaypoints}
+          showWaypoints={showWaypoints && !drawingMode}
+          draggableMode={draggableMode && showWaypoints && !drawingMode}
           onWaypointMove={handleWaypointMove}
+          enableDrawing={drawingMode}
+          onDrawingComplete={handleDrawingComplete}
         />
       </div>
 
@@ -368,13 +474,14 @@ export default function Home() {
           <div>
             <span style={{ fontWeight: '500' }}>Map Provider:</span> OpenStreetMap
             <span style={{ margin: '0 8px' }}>•</span>
-            <span style={{ fontWeight: '500' }}>Region:</span> Los Angeles
+            <span style={{ fontWeight: '500' }}>Region:</span> Southern California
           </div>
           <div>
-            Click on a route to interact • Use mouse wheel to zoom • Drag to pan • Click "Move Points" to drag waypoints
+            Click on a route to interact • Use mouse wheel to zoom • Drag to pan • Click &quot;Move Points&quot; to drag waypoints
           </div>
         </div>
       </div>
     </main>
   )
 }
+

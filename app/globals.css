@@ -1,26 +1,33 @@
-* {
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Leaflet CSS */
+@import 'leaflet/dist/leaflet.css';
+@import 'leaflet-draw/dist/leaflet.draw.css';
+
+@layer base {
+  * {
     box-sizing: border-box;
     padding: 0;
     margin: 0;
-}
+  }
 
-html,
-body {
+  html,
+  body {
     max-width: 100vw;
     overflow-x: hidden;
     height: 100%;
-}
+  }
 
-body {
+  body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
         'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
         sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
 }
-
-/* Leaflet CSS */
-@import 'leaflet/dist/leaflet.css';
 
 /* Loading spinner animation */
 @keyframes spin {
@@ -30,5 +37,26 @@ body {
 
     100% {
         transform: rotate(360deg);
+    }
+}
+
+/* Typewriter cursor blink animation */
+@keyframes blink {
+    0%, 50% {
+        opacity: 1;
+    }
+
+    51%, 100% {
+        opacity: 0;
+    }
+}
+
+@layer utilities {
+    .scrollbar-hide {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+    .scrollbar-hide::-webkit-scrollbar {
+        display: none;
     }
 }
