@@ -1,380 +1,449 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import dynamic from 'next/dynamic'
-import type { Route, Coordinate } from '@/types/route'
-import { snapToRoads, snapToNearestRoad, snapMultipleToNearestRoad, optimizeWaypointOrder } from '@/utils/routeHelpers'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 
-// Dynamically import the map component to avoid SSR issues with Leaflet
-const RouteMap = dynamic(() => import('@/components/RouteMap'), {
-  ssr: false,
-  loading: () => (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100%',
-      background: '#f3f4f6',
-    }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{
-          width: '48px',
-          height: '48px',
-          border: '3px solid #e5e7eb',
-          borderTop: '3px solid #2563eb',
-          borderRadius: '50%',
-          margin: '0 auto 16px',
-          animation: 'spin 1s linear infinite',
-        }}></div>
-        <p style={{ color: '#4b5563' }}>Loading map...</p>
-      </div>
-    </div>
-  ),
-})
-
-/**
- * Example route demonstrating polyline rendering
- * This represents a simple running loop in the Los Angeles area
- */
-const exampleRoute: Route = {
-  id: 'example-route-1',
-  name: 'Example Running Loop',
-  coordinates: [
-    { lat: 34.0522, lng: -118.2437 }, // Starting point (Downtown LA)
-    { lat: 34.0622, lng: -118.2537 },
-    { lat: 34.0722, lng: -118.2637 },
-    { lat: 34.0692, lng: -118.2737 },
-    { lat: 34.0592, lng: -118.2787 },
-    { lat: 34.0492, lng: -118.2737 },
-    { lat: 34.0422, lng: -118.2637 },
-    { lat: 34.0452, lng: -118.2537 },
-    { lat: 34.0522, lng: -118.2437 }, // Return to start
-  ],
-  color: '#3b82f6',
-  weight: 5,
-  opacity: 0.8,
+interface LandingPageProps {
+  onSignIn: () => void
 }
 
-export default function Home() {
-  const [routes, setRoutes] = useState<Route[]>([exampleRoute])
-  const [showExample, setShowExample] = useState(true)
-  const [isSnappedToRoads, setIsSnappedToRoads] = useState(false)
-  const [isSnapping, setIsSnapping] = useState(false)
-  const [showWaypoints, setShowWaypoints] = useState(true)
-  const [waypoints, setWaypoints] = useState<Coordinate[]>(exampleRoute.coordinates)
-  const [draggableMode, setDraggableMode] = useState(false)
-  
-  // Update waypoints when example route changes and snap them to intersections
-  useEffect(() => {
-    if (showExample) {
-      // Use batch snapping for better performance
-      const snapWaypoints = async () => {
-        const snappedWaypoints = await snapMultipleToNearestRoad(
-          exampleRoute.coordinates,
-          'walking',
-          10 // Process 10 waypoints at a time
-        )
-        setWaypoints(snappedWaypoints)
+function LandingPage({ onSignIn }: LandingPageProps) {
+  const [darkMode, setDarkMode] = useState(false)
 
-        // Update the route with snapped waypoints
-        const updatedRoute: Route = {
-          ...exampleRoute,
-          coordinates: snappedWaypoints,
-        }
-        setRoutes([updatedRoute])
-      }
-      snapWaypoints()
-    }
-  }, [showExample])
-
-  const handleRouteClick = (route: Route) => {
-    console.log('Route clicked:', route)
-    // Future: Could show route details or allow interaction
-  }
-
-  const toggleExampleRoute = () => {
-    if (showExample) {
-      setRoutes([])
-      setIsSnappedToRoads(false)
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode)
+    if (!darkMode) {
+      document.documentElement.classList.add('dark')
     } else {
-      setRoutes([exampleRoute])
-      setWaypoints(exampleRoute.coordinates)
-      setIsSnappedToRoads(false)
+      document.documentElement.classList.remove('dark')
     }
-    setShowExample(!showExample)
   }
 
-  // Debounce timer for waypoint moves to avoid excessive API calls
-  const waypointMoveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
-  const handleWaypointMove = async (index: number, newPosition: Coordinate) => {
-    // Clear any pending snap operation
-    if (waypointMoveTimeoutRef.current) {
-      clearTimeout(waypointMoveTimeoutRef.current)
-    }
-
-    // Update the UI immediately with the new position
-    const updatedWaypointsUI = [...waypoints]
-    updatedWaypointsUI[index] = newPosition
-    setWaypoints(updatedWaypointsUI)
-
-    // Debounce the actual snapping and re-routing
-    waypointMoveTimeoutRef.current = setTimeout(async () => {
-      // First, snap the waypoint to the nearest road intersection
-      const snappedPosition = await snapToNearestRoad(newPosition, 'walking', true)
-
-      // Update with snapped position
-      const finalWaypoints = [...waypoints]
-      finalWaypoints[index] = snappedPosition
-      setWaypoints(finalWaypoints)
-
-      // If route is snapped to roads, re-route with snapped waypoints
-      if (isSnappedToRoads) {
-        setIsSnapping(true)
-        try {
-          const snappedCoords = await snapToRoads(finalWaypoints, 'walking')
-          const snappedRoute: Route = {
-            ...exampleRoute,
-            coordinates: snappedCoords,
-            name: exampleRoute.name + ' (Road-Aligned)',
-          }
-          setRoutes([snappedRoute])
-        } catch (error) {
-          console.error('Failed to re-route:', error)
-        } finally {
-          setIsSnapping(false)
-        }
-      } else {
-        // Update route with new waypoints (straight lines)
-        const updatedRoute: Route = {
-          ...exampleRoute,
-          coordinates: finalWaypoints,
-        }
-        setRoutes([updatedRoute])
-      }
-    }, 300) // 300ms debounce
-  }
-
-  const toggleRoadSnapping = async () => {
-    if (isSnappedToRoads) {
-      // Revert to original route
-      const straightRoute: Route = {
-        ...exampleRoute,
-        coordinates: waypoints,
-      }
-      setRoutes([straightRoute])
-      setIsSnappedToRoads(false)
-    } else {
-      // Snap to roads
-      setIsSnapping(true)
-      try {
-        const snappedCoords = await snapToRoads(waypoints, 'walking')
-        const snappedRoute: Route = {
-          ...exampleRoute,
-          coordinates: snappedCoords,
-          name: exampleRoute.name + ' (Road-Aligned)',
-        }
-        setRoutes([snappedRoute])
-        setIsSnappedToRoads(true)
-      } catch (error) {
-        console.error('Failed to snap to roads:', error)
-        alert('Failed to snap route to roads. Please try again.')
-      } finally {
-        setIsSnapping(false)
-      }
+  const scrollToSection = (id: string) => {
+    const element = document.getElementById(id)
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' })
     }
   }
 
   return (
-    <main style={{
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100vh',
-      width: '100vw',
-    }}>
-      {/* Header */}
-      <header style={{
-        background: 'white',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-        borderBottom: '1px solid #e5e7eb',
-        padding: '16px 24px',
-        zIndex: 10,
-      }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-          <div>
-            <h1 style={{
-              fontSize: '24px',
-              fontWeight: 'bold',
-              color: '#111827',
-              marginBottom: '4px',
-            }}>TrailTrace</h1>
-            <p style={{
-              fontSize: '14px',
-              color: '#4b5563',
-            }}>Running Route Generator - Los Angeles</p>
-          </div>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-          }}>
-            <button
-              onClick={toggleExampleRoute}
-              disabled={isSnapping}
-              style={{
-                padding: '8px 16px',
-                background: '#2563eb',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: isSnapping ? 'not-allowed' : 'pointer',
-                fontSize: '14px',
-                fontWeight: '500',
-                transition: 'background-color 0.2s',
-                opacity: isSnapping ? 0.6 : 1,
-              }}
-              onMouseOver={(e) => !isSnapping && (e.currentTarget.style.background = '#1d4ed8')}
-              onMouseOut={(e) => !isSnapping && (e.currentTarget.style.background = '#2563eb')}
-            >
-              {showExample ? 'Hide Example Route' : 'Show Example Route'}
-            </button>
-            {showExample && (
-              <>
-                <button
-                  onClick={toggleRoadSnapping}
-                  disabled={isSnapping}
-                  style={{
-                    padding: '8px 16px',
-                    background: isSnappedToRoads ? '#10b981' : '#6b7280',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: isSnapping ? 'not-allowed' : 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    transition: 'background-color 0.2s',
-                    opacity: isSnapping ? 0.6 : 1,
-                  }}
-                  onMouseOver={(e) => {
-                    if (!isSnapping) {
-                      e.currentTarget.style.background = isSnappedToRoads ? '#059669' : '#4b5563'
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    if (!isSnapping) {
-                      e.currentTarget.style.background = isSnappedToRoads ? '#10b981' : '#6b7280'
-                    }
-                  }}
-                >
-                  {isSnapping ? 'Snapping...' : isSnappedToRoads ? 'Show Straight Lines' : 'Snap to Roads'}
-                </button>
-                <button
-                  onClick={() => setShowWaypoints(!showWaypoints)}
-                  style={{
-                    padding: '8px 16px',
-                    background: showWaypoints ? '#ef4444' : '#9ca3af',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    transition: 'background-color 0.2s',
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.background = showWaypoints ? '#dc2626' : '#6b7280'
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.background = showWaypoints ? '#ef4444' : '#9ca3af'
-                  }}
-                >
-                  {showWaypoints ? 'Hide Waypoints' : 'Show Waypoints'}
-                </button>
-                <button
-                  onClick={() => setDraggableMode(!draggableMode)}
-                  disabled={!showWaypoints}
-                  style={{
-                    padding: '8px 16px',
-                    background: draggableMode ? '#f59e0b' : '#9ca3af',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: !showWaypoints ? 'not-allowed' : 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    transition: 'background-color 0.2s',
-                    opacity: !showWaypoints ? 0.5 : 1,
-                  }}
-                  onMouseOver={(e) => {
-                    if (showWaypoints) {
-                      e.currentTarget.style.background = draggableMode ? '#d97706' : '#6b7280'
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    if (showWaypoints) {
-                      e.currentTarget.style.background = draggableMode ? '#f59e0b' : '#9ca3af'
-                    }
-                  }}
-                >
-                  {draggableMode ? 'Stop Moving Points' : 'Move Points'}
-                </button>
-              </>
-            )}
-            <div style={{
-              fontSize: '14px',
-              color: '#4b5563',
-            }}>
-              Routes: <span style={{ fontWeight: '600' }}>{routes.length}</span>
+    <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
+      <div className="flex flex-col lg:flex-row bg-stone-50 dark:bg-forest-900 text-forest-900 dark:text-stone-50">
+        {/* Sidebar - Fixed on desktop */}
+        <aside className="w-full lg:w-64 lg:h-screen lg:sticky lg:top-0 bg-white dark:bg-forest-800 border-b lg:border-b-0 lg:border-r border-forest-200 dark:border-forest-700 flex flex-col z-50">
+          {/* Logo */}
+          <div className="p-6 border-b border-forest-200 dark:border-forest-700">
+            <div className="relative w-32 h-16 mb-3">
+              <Image
+                src="/images/logo.png"
+                alt="TrailTrace Logo"
+                fill
+                className="object-contain"
+                priority
+              />
             </div>
+            <p className="text-sm text-forest-600 dark:text-forest-300 font-medium">
+              Draw your path. Run your route.
+            </p>
           </div>
-        </div>
-      </header>
 
-      {/* Map Container */}
-      <div style={{
-        flex: 1,
-        position: 'relative',
-      }}>
-        <RouteMap
-          routes={routes}
-          waypoints={showExample ? waypoints : []}
-          center={{ lat: 34.0522, lng: -118.2437 }}
-          zoom={11}
-          onRouteClick={handleRouteClick}
-          showWaypoints={showWaypoints}
-          draggableMode={draggableMode && showWaypoints}
-          onWaypointMove={handleWaypointMove}
-        />
-      </div>
+          {/* Navigation */}
+          <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+            <button
+              onClick={() => scrollToSection('overview')}
+              className="w-full text-left px-4 py-2 rounded-lg hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200 transition-colors"
+            >
+              Overview
+            </button>
+            <button
+              onClick={() => scrollToSection('how-it-works')}
+              className="w-full text-left px-4 py-2 rounded-lg hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200 transition-colors"
+            >
+              How it works
+            </button>
+            <button
+              onClick={() => scrollToSection('safety')}
+              className="w-full text-left px-4 py-2 rounded-lg hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200 transition-colors"
+            >
+              Safety first
+            </button>
+            <button
+              onClick={() => scrollToSection('friends')}
+              className="w-full text-left px-4 py-2 rounded-lg hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200 transition-colors"
+            >
+              For friends
+            </button>
+            <button
+              onClick={() => scrollToSection('get-started')}
+              className="w-full text-left px-4 py-2 rounded-lg hover:bg-forest-50 dark:hover:bg-forest-700 text-forest-700 dark:text-forest-200 transition-colors"
+            >
+              Get started
+            </button>
+          </nav>
 
-      {/* Info Panel */}
-      <div style={{
-        background: '#f9fafb',
-        borderTop: '1px solid #e5e7eb',
-        padding: '12px 24px',
-        zIndex: 10,
-      }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          fontSize: '14px',
-          color: '#4b5563',
-        }}>
-          <div>
-            <span style={{ fontWeight: '500' }}>Map Provider:</span> OpenStreetMap
-            <span style={{ margin: '0 8px' }}>•</span>
-            <span style={{ fontWeight: '500' }}>Region:</span> Los Angeles
+          {/* Footer */}
+          <div className="p-4 border-t border-forest-200 dark:border-forest-700 space-y-4">
+            <button
+              onClick={toggleDarkMode}
+              className="w-full px-4 py-2 rounded-lg bg-forest-100 dark:bg-forest-700 hover:bg-forest-200 dark:hover:bg-forest-600 text-forest-700 dark:text-forest-200 transition-colors text-sm"
+            >
+              {darkMode ? '☀️ Light mode' : '🌙 Dark mode'}
+            </button>
+            <div className="flex space-x-4 justify-center">
+              <a href="#" className="text-forest-400 hover:text-orange-accent transition-colors">Twitter</a>
+              <a href="#" className="text-forest-400 hover:text-orange-accent transition-colors">GitHub</a>
+            </div>
+            <p className="text-xs text-center text-forest-500 dark:text-forest-400">
+              SB Hacks - 2026
+            </p>
           </div>
-          <div>
-            Click on a route to interact • Use mouse wheel to zoom • Drag to pan • Click "Move Points" to drag waypoints
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto">
+          {/* Background Illustration */}
+          <div className="fixed inset-0 pointer-events-none opacity-5 dark:opacity-10 z-0">
+            <div className="absolute inset-0 bg-gradient-to-br from-forest-500 via-forest-400 to-orange-accent"></div>
           </div>
-        </div>
+
+          {/* Hero Section - Overview */}
+          <section id="overview" className="relative z-10 px-6 lg:px-12 py-20 lg:py-32">
+            <div className="max-w-7xl mx-auto">
+              <div className="grid lg:grid-cols-2 gap-12 items-center">
+                {/* Left: Text Content */}
+                <div className="space-y-6">
+                  <h1 className="text-5xl lg:text-6xl font-bold text-forest-900 dark:text-white leading-tight">
+                    Turn sketches into safe, social runs.
+                  </h1>
+                  <p className="text-xl text-forest-600 dark:text-forest-300 leading-relaxed">
+                    Draw any route you want—hearts, letters, your campus mascot. TrailTrace maps it to real streets, avoids high-crime areas, and lets you share with friends.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                    <button
+                      onClick={onSignIn}
+                      className="px-8 py-4 bg-orange-accent hover:bg-orange-dark text-white rounded-xl font-semibold text-lg shadow-lg shadow-orange-500/30 hover:shadow-xl hover:shadow-orange-500/40 transition-all hover:scale-105 animate-pulse-slow"
+                    >
+                      Start drawing a route
+                    </button>
+                    <button className="px-8 py-4 bg-white dark:bg-forest-800 border-2 border-forest-300 dark:border-forest-600 text-forest-700 dark:text-forest-200 rounded-xl font-semibold text-lg hover:bg-forest-50 dark:hover:bg-forest-700 transition-all">
+                      Watch 30‑second preview
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right: Map Preview Card */}
+                <div className="relative">
+                  <div className="relative bg-white dark:bg-forest-800 rounded-3xl shadow-2xl p-6 transform rotate-3 hover:rotate-6 transition-transform duration-300">
+                    {/* Mock Map */}
+                    <div className="aspect-square bg-gradient-to-br from-forest-100 to-forest-200 dark:from-forest-700 dark:to-forest-600 rounded-2xl relative overflow-hidden">
+                      {/* Route Path */}
+                      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 200 200">
+                        <path
+                          d="M 50 100 Q 75 50, 100 100 T 150 100"
+                          fill="none"
+                          stroke="#f97316"
+                          strokeWidth="4"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      {/* Friend Avatars */}
+                      <div className="absolute top-1/4 left-1/3 w-8 h-8 bg-blue-500 rounded-full border-2 border-white"></div>
+                      <div className="absolute bottom-1/4 right-1/3 w-8 h-8 bg-green-500 rounded-full border-2 border-white"></div>
+                    </div>
+                  </div>
+                  {/* Floating Badges */}
+                  <div className="absolute -top-4 -right-4 bg-white dark:bg-forest-800 px-4 py-2 rounded-full shadow-lg border border-forest-200 dark:border-forest-700 animate-float">
+                    <span className="text-sm font-semibold text-forest-700 dark:text-forest-200">5k campus loop</span>
+                  </div>
+                  <div className="absolute -bottom-4 -left-4 bg-green-500 text-white px-4 py-2 rounded-full shadow-lg animate-float" style={{ animationDelay: '1s' }}>
+                    <span className="text-sm font-semibold">Safety score 92</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* How It Works Timeline */}
+          <section id="how-it-works" className="relative z-10 px-6 lg:px-12 py-20 bg-white/50 dark:bg-forest-800/50 backdrop-blur-sm">
+            <div className="max-w-5xl mx-auto">
+              <h2 className="text-4xl font-bold text-center mb-16 text-forest-900 dark:text-white">
+                How it works
+              </h2>
+              
+              <div className="grid md:grid-cols-3 gap-8">
+                {/* Step 1: Draw */}
+                <div className="relative">
+                  <div className="bg-white dark:bg-forest-800 rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow border border-forest-100 dark:border-forest-700">
+                    <div className="w-16 h-16 bg-gradient-to-br from-forest-500 to-forest-600 rounded-xl flex items-center justify-center mb-6 text-3xl">
+                      ✏️
+                    </div>
+                    <h3 className="text-2xl font-bold mb-3 text-forest-900 dark:text-white">Draw</h3>
+                    <p className="text-forest-600 dark:text-forest-300">
+                      Sketch any outline on our interactive canvas. Draw hearts, letters, or any shape you want to run.
+                    </p>
+                  </div>
+                  <div className="hidden md:block absolute top-1/2 -right-4 w-8 border-t-2 border-dashed border-forest-300 dark:border-forest-600 transform -translate-y-1/2"></div>
+                </div>
+
+                {/* Step 2: Generate */}
+                <div className="relative">
+                  <div className="bg-white dark:bg-forest-800 rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow border border-forest-100 dark:border-forest-700">
+                    <div className="w-16 h-16 bg-gradient-to-br from-orange-accent to-orange-dark rounded-xl flex items-center justify-center mb-6 text-3xl">
+                      🗺️
+                    </div>
+                    <h3 className="text-2xl font-bold mb-3 text-forest-900 dark:text-white">Generate safe route</h3>
+                    <p className="text-forest-600 dark:text-forest-300">
+                      Our system maps your drawing onto real streets and avoids high-crime areas when possible.
+                    </p>
+                  </div>
+                  <div className="hidden md:block absolute top-1/2 -right-4 w-8 border-t-2 border-dashed border-forest-300 dark:border-forest-600 transform -translate-y-1/2"></div>
+                </div>
+
+                {/* Step 3: Run & Share */}
+                <div>
+                  <div className="bg-white dark:bg-forest-800 rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow border border-forest-100 dark:border-forest-700">
+                    <div className="w-16 h-16 bg-gradient-to-br from-forest-500 to-orange-accent rounded-xl flex items-center justify-center mb-6 text-3xl">
+                      👥
+                    </div>
+                    <h3 className="text-2xl font-bold mb-3 text-forest-900 dark:text-white">Run & share</h3>
+                    <p className="text-forest-600 dark:text-forest-300">
+                      Copy routes from others, share your creations, and build a community of runners.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Safety First Section */}
+          <section id="safety" className="relative z-10 px-6 lg:px-12 py-20">
+            <div className="max-w-6xl mx-auto">
+              <div className="grid lg:grid-cols-2 gap-12 items-center">
+                {/* Left: Copy */}
+                <div className="space-y-6">
+                  <h2 className="text-4xl font-bold text-forest-900 dark:text-white">
+                    Safety first
+                  </h2>
+                  <p className="text-lg text-forest-600 dark:text-forest-300 leading-relaxed">
+                    Every route is analyzed using crime heatmap data. We prioritize well-lit streets and areas with lower incident rates, especially important for campus-area runs.
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    <span className="px-4 py-2 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 rounded-full text-sm font-semibold">
+                      Crime-aware routing
+                    </span>
+                    <span className="px-4 py-2 bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 rounded-full text-sm font-semibold">
+                      Route safety score
+                    </span>
+                  </div>
+                </div>
+
+                {/* Right: Heatmap Card */}
+                <div className="relative">
+                  <div className="bg-white dark:bg-forest-800 rounded-3xl p-6 shadow-2xl border border-forest-100 dark:border-forest-700">
+                    <div className="aspect-square relative rounded-2xl overflow-hidden">
+                      {/* Heatmap Gradient */}
+                      <div className="absolute inset-0 bg-gradient-to-br from-green-500/40 via-yellow-500/30 to-red-500/40"></div>
+                      {/* Route Overlay */}
+                      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 200 200">
+                        <path
+                          d="M 30 150 Q 60 100, 90 120 T 170 100"
+                          fill="none"
+                          stroke="#f97316"
+                          strokeWidth="5"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      {/* Grid overlay for heatmap effect */}
+                      <div className="absolute inset-0 opacity-20" style={{
+                        backgroundImage: 'radial-gradient(circle, rgba(0,0,0,0.1) 1px, transparent 1px)',
+                        backgroundSize: '20px 20px'
+                      }}></div>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                        <span className="text-sm text-forest-600 dark:text-forest-300">Lower reports</span>
+                      </div>
+                      <div className="flex-1 h-1 bg-gradient-to-r from-green-500 via-yellow-500 to-red-500 rounded mx-4"></div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                        <span className="text-sm text-forest-600 dark:text-forest-300">Higher reports</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* For Friends Section */}
+          <section id="friends" className="relative z-10 px-6 lg:px-12 py-20 bg-white/50 dark:bg-forest-800/50 backdrop-blur-sm">
+            <div className="max-w-7xl mx-auto">
+              <div className="text-center mb-12">
+                <h2 className="text-4xl font-bold mb-4 text-forest-900 dark:text-white">
+                  Run together, from anywhere
+                </h2>
+                <p className="text-lg text-forest-600 dark:text-forest-300 max-w-2xl mx-auto">
+                  Discover routes created by friends, copy them to your profile, and run the same path even when you&apos;re apart.
+                </p>
+              </div>
+
+              {/* Scrollable Route Cards */}
+              <div className="overflow-x-auto snap-x snap-mandatory scrollbar-hide -mx-6 px-6">
+                <div className="flex gap-6 pb-4">
+                  {/* Route Card 1 */}
+                  <div className="flex-shrink-0 w-80 snap-center">
+                    <div className="bg-white dark:bg-forest-800 rounded-2xl shadow-lg hover:shadow-xl transition-shadow border border-forest-100 dark:border-forest-700 overflow-hidden">
+                      <div className="h-40 bg-gradient-to-br from-forest-200 to-forest-300 dark:from-forest-700 dark:to-forest-600 relative">
+                        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 200 200">
+                          <path d="M 50 100 Q 100 50, 150 100" fill="none" stroke="#f97316" strokeWidth="4" />
+                        </svg>
+                      </div>
+                      <div className="p-6">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="font-bold text-lg text-forest-900 dark:text-white">Heart around IV</h3>
+                          <span className="text-sm text-forest-500 dark:text-forest-400">3.2k</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-blue-500 rounded-full"></div>
+                            <span className="text-sm text-forest-600 dark:text-forest-300">@runner123</span>
+                          </div>
+                          <button className="px-4 py-2 bg-orange-accent hover:bg-orange-dark text-white rounded-lg text-sm font-semibold transition-colors">
+                            Copy route
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Route Card 2 */}
+                  <div className="flex-shrink-0 w-80 snap-center">
+                    <div className="bg-white dark:bg-forest-800 rounded-2xl shadow-lg hover:shadow-xl transition-shadow border border-forest-100 dark:border-forest-700 overflow-hidden">
+                      <div className="h-40 bg-gradient-to-br from-orange-200 to-orange-300 dark:from-orange-900/30 dark:to-orange-800/30 relative">
+                        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 200 200">
+                          <path d="M 100 50 L 150 100 L 100 150 L 50 100 Z" fill="none" stroke="#1a4d3e" strokeWidth="4" />
+                        </svg>
+                      </div>
+                      <div className="p-6">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="font-bold text-lg text-forest-900 dark:text-white">Campus Square</h3>
+                          <span className="text-sm text-forest-500 dark:text-forest-400">5.1k</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-green-500 rounded-full"></div>
+                            <span className="text-sm text-forest-600 dark:text-forest-300">@trailrunner</span>
+                          </div>
+                          <button className="px-4 py-2 bg-orange-accent hover:bg-orange-dark text-white rounded-lg text-sm font-semibold transition-colors">
+                            Copy route
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Route Card 3 */}
+                  <div className="flex-shrink-0 w-80 snap-center">
+                    <div className="bg-white dark:bg-forest-800 rounded-2xl shadow-lg hover:shadow-xl transition-shadow border border-forest-100 dark:border-forest-700 overflow-hidden">
+                      <div className="h-40 bg-gradient-to-br from-blue-200 to-blue-300 dark:from-blue-900/30 dark:to-blue-800/30 relative">
+                        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 200 200">
+                          <path d="M 50 50 Q 100 150, 150 50" fill="none" stroke="#f97316" strokeWidth="4" />
+                        </svg>
+                      </div>
+                      <div className="p-6">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="font-bold text-lg text-forest-900 dark:text-white">Beach Loop</h3>
+                          <span className="text-sm text-forest-500 dark:text-forest-400">7.8k</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-purple-500 rounded-full"></div>
+                            <span className="text-sm text-forest-600 dark:text-forest-300">@coastalrun</span>
+                          </div>
+                          <button className="px-4 py-2 bg-orange-accent hover:bg-orange-dark text-white rounded-lg text-sm font-semibold transition-colors">
+                            Copy route
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Testimonial Section */}
+          <section className="relative z-10 px-6 lg:px-12 py-20 bg-gradient-to-br from-forest-700 via-forest-800 to-forest-900 text-white">
+            <div className="max-w-4xl mx-auto text-center">
+              <blockquote className="text-3xl lg:text-4xl font-medium mb-8 italic">
+                &quot;TrailTrace turned runs into something I actually look forward to.&quot;
+              </blockquote>
+              <div className="flex items-center justify-center gap-4">
+                <div className="w-16 h-16 bg-orange-accent rounded-full flex items-center justify-center text-2xl">
+                  🏃
+                </div>
+                <div className="text-left">
+                  <p className="font-semibold text-lg">Sarah Chen</p>
+                  <p className="text-forest-300">UCSB Runner</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* CTA Section - Get Started */}
+          <section id="get-started" className="relative z-10 px-6 lg:px-12 py-20">
+            <div className="max-w-3xl mx-auto">
+              <div className="bg-white dark:bg-forest-800 rounded-3xl shadow-2xl p-12 border border-forest-100 dark:border-forest-700 relative overflow-hidden">
+                {/* Subtle path illustration behind */}
+                <div className="absolute inset-0 opacity-5 pointer-events-none">
+                  <svg className="w-full h-full" viewBox="0 0 400 200">
+                    <path
+                      d="M 0 100 Q 100 50, 200 100 T 400 100"
+                      fill="none"
+                      stroke="#1a4d3e"
+                      strokeWidth="2"
+                    />
+                  </svg>
+                </div>
+                
+                <div className="relative z-10 text-center space-y-8">
+                  <h2 className="text-4xl lg:text-5xl font-bold text-forest-900 dark:text-white">
+                    Ready to trace your first trail?
+                  </h2>
+                  <form className="space-y-4 max-w-md mx-auto" onSubmit={(e) => { e.preventDefault(); onSignIn(); }}>
+                    <input
+                      type="email"
+                      placeholder="Enter your email"
+                      className="w-full px-6 py-4 rounded-xl border-2 border-forest-200 dark:border-forest-600 bg-white dark:bg-forest-700 text-forest-900 dark:text-white focus:outline-none focus:border-orange-accent transition-colors"
+                    />
+                    <button
+                      type="submit"
+                      className="w-full px-8 py-4 bg-orange-accent hover:bg-orange-dark text-white rounded-xl font-semibold text-lg shadow-lg shadow-orange-500/30 hover:shadow-xl hover:shadow-orange-500/40 transition-all hover:scale-105"
+                    >
+                      Get early access
+                    </button>
+                  </form>
+                  <p className="text-sm text-forest-500 dark:text-forest-400">
+                    No spam. Just a link to try the prototype.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
       </div>
-    </main>
+    </div>
   )
+}
+
+export default function Home() {
+  const router = useRouter()
+
+  const handleSignIn = () => {
+    router.push('/map')
+  }
+
+  return <LandingPage onSignIn={handleSignIn} />
 }
