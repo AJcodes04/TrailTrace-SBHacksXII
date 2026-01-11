@@ -903,7 +903,7 @@ export function isValidRoute(route: Route): boolean {
  */
 export function getRouteCenter(route: Route): Coordinate {
   if (route.coordinates.length === 0) {
-    return { lat: 34.4208, lng: -119.6982 } // Default to Santa Barbara
+    return { lat: 34.0522, lng: -118.2437 } // Default to Los Angeles
   }
 
   const sumLat = route.coordinates.reduce((sum, coord) => sum + coord.lat, 0)

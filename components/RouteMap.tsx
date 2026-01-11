@@ -253,7 +253,7 @@ function DrawingController({
 export default function RouteMap({
   routes = [],
   waypoints = [],
-  center = { lat: 34.4208, lng: -119.6982 }, // Santa Barbara area - center of Southern California
+  center = { lat: 34.0522, lng: -118.2437 }, // Los Angeles area
   zoom = 10,
   onRouteClick,
   showWaypoints = true,

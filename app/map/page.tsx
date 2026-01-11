@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import type { Route, Coordinate } from '@/types/route'
 import { snapToRoads, snapToNearestRoad, snapMultipleToNearestRoad, optimizeWaypointOrder } from '@/utils/routeHelpers'
+import DrawingCanvas from '@/components/DrawingCanvas'
 
 // Dynamically import the map component to avoid SSR issues with Leaflet
 const RouteMap = dynamic(() => import('@/components/RouteMap'), {
@@ -34,21 +35,21 @@ const RouteMap = dynamic(() => import('@/components/RouteMap'), {
 
 /**
  * Example route demonstrating polyline rendering
- * This represents a simple running loop in the Santa Barbara area
+ * This represents a simple running loop in the Los Angeles area
  */
 const exampleRoute: Route = {
   id: 'example-route-1',
   name: 'Example Running Loop',
   coordinates: [
-    { lat: 34.4150, lng: -119.6900 }, // Starting point
-    { lat: 34.4250, lng: -119.7000 },
-    { lat: 34.4350, lng: -119.7100 },
-    { lat: 34.4320, lng: -119.7200 },
-    { lat: 34.4220, lng: -119.7250 },
-    { lat: 34.4120, lng: -119.7200 },
-    { lat: 34.4050, lng: -119.7100 },
-    { lat: 34.4080, lng: -119.7000 },
-    { lat: 34.4150, lng: -119.6900 }, // Return to start
+    { lat: 34.0522, lng: -118.2437 }, // Starting point (Downtown LA)
+    { lat: 34.0620, lng: -118.2500 },
+    { lat: 34.0720, lng: -118.2600 },
+    { lat: 34.0700, lng: -118.2700 },
+    { lat: 34.0600, lng: -118.2750 },
+    { lat: 34.0500, lng: -118.2700 },
+    { lat: 34.0450, lng: -118.2600 },
+    { lat: 34.0480, lng: -118.2500 },
+    { lat: 34.0522, lng: -118.2437 }, // Return to start
   ],
   color: '#3b82f6',
   weight: 5,
@@ -64,6 +65,17 @@ export default function MapPage() {
   const [waypoints, setWaypoints] = useState<Coordinate[]>(exampleRoute.coordinates)
   const [draggableMode, setDraggableMode] = useState(false)
   const [drawingMode, setDrawingMode] = useState(false)
+  const [showCanvas, setShowCanvas] = useState(false)
+  
+  // Define the geographic area for route generation (Los Angeles area)
+  const mapBounds = {
+    center: { lat: 34.0522, lng: -118.2437 }, // Los Angeles center
+    // Rough bounding box around Los Angeles area
+    north: 34.15,
+    south: 33.95,
+    east: -118.15,
+    west: -118.35,
+  }
   
   // Update waypoints when example route changes and snap them to intersections
   useEffect(() => {
@@ -193,6 +205,62 @@ export default function MapPage() {
     }
   }
 
+  // Convert canvas coordinates to geographic coordinates
+  const canvasToGeographic = (canvasPoints: Array<{ x: number; y: number }>, canvasWidth: number, canvasHeight: number): Coordinate[] => {
+    const latRange = mapBounds.north - mapBounds.south
+    const lngRange = mapBounds.east - mapBounds.west
+
+    return canvasPoints.map(point => {
+      // Convert canvas coordinates (0 to width/height) to normalized (0 to 1)
+      const normalizedX = point.x / canvasWidth
+      const normalizedY = 1 - (point.y / canvasHeight) // Flip Y axis (canvas Y increases downward)
+
+      // Map to geographic coordinates
+      const lat = mapBounds.south + normalizedY * latRange
+      const lng = mapBounds.west + normalizedX * lngRange
+
+      return { lat, lng }
+    })
+  }
+
+  // Handle canvas drawing completion
+  const handleCanvasDrawingComplete = async (canvasPoints: Array<{ x: number; y: number }>) => {
+    if (canvasPoints.length < 2) {
+      alert('Please draw a route with at least 2 points')
+      return
+    }
+
+    setIsSnapping(true)
+
+    try {
+      // Convert canvas coordinates to geographic coordinates
+      const geographicWaypoints = canvasToGeographic(canvasPoints, 400, 400)
+
+      // Route the waypoints through OSRM
+      const snappedCoords = await snapToRoads(geographicWaypoints, 'walking', true, true)
+      
+      const newRoute: Route = {
+        id: `route-${Date.now()}`,
+        name: 'Drawn Route',
+        coordinates: snappedCoords,
+        color: '#f97316', // TrailTrace orange
+        weight: 5,
+        opacity: 0.8,
+      }
+
+      // Add the new route to the routes array
+      setRoutes([...routes, newRoute])
+      setShowExample(false) // Hide example route if showing
+      setShowCanvas(false) // Close canvas after route generation
+    } catch (error) {
+      console.error('Failed to generate route from drawing:', error)
+      alert('Failed to generate route. Please try again.')
+    } finally {
+      setIsSnapping(false)
+    }
+  }
+
+  // Legacy handler for map drawing (keep for now)
   const handleDrawingComplete = async (coordinates: Coordinate[]) => {
     if (coordinates.length < 2) {
       alert('Please draw a route with at least 2 points')
@@ -269,11 +337,11 @@ export default function MapPage() {
             gap: '16px',
           }}>
             <button
-              onClick={() => setDrawingMode(!drawingMode)}
+              onClick={() => setShowCanvas(!showCanvas)}
               disabled={isSnapping}
               style={{
                 padding: '8px 16px',
-                background: drawingMode ? '#f97316' : '#2563eb',
+                background: showCanvas ? '#f97316' : '#2563eb',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
@@ -285,16 +353,16 @@ export default function MapPage() {
               }}
               onMouseOver={(e) => {
                 if (!isSnapping) {
-                  e.currentTarget.style.background = drawingMode ? '#ea580c' : '#1d4ed8'
+                  e.currentTarget.style.background = showCanvas ? '#ea580c' : '#1d4ed8'
                 }
               }}
               onMouseOut={(e) => {
                 if (!isSnapping) {
-                  e.currentTarget.style.background = drawingMode ? '#f97316' : '#2563eb'
+                  e.currentTarget.style.background = showCanvas ? '#f97316' : '#2563eb'
                 }
               }}
             >
-              {drawingMode ? 'Stop Drawing' : 'Draw Route'}
+              {showCanvas ? 'Close Canvas' : 'Draw Route'}
             </button>
             <button
               onClick={toggleExampleRoute}
@@ -438,23 +506,64 @@ export default function MapPage() {
         </div>
       </header>
 
-      {/* Map Container */}
+      {/* Main Content Area */}
       <div style={{
         flex: 1,
         position: 'relative',
+        display: 'flex',
       }}>
-        <RouteMap
-          routes={routes}
-          waypoints={showExample ? waypoints : []}
-          center={{ lat: 34.4208, lng: -119.6982 }}
-          zoom={10}
-          onRouteClick={handleRouteClick}
-          showWaypoints={showWaypoints && !drawingMode}
-          draggableMode={draggableMode && showWaypoints && !drawingMode}
-          onWaypointMove={handleWaypointMove}
-          enableDrawing={drawingMode}
-          onDrawingComplete={handleDrawingComplete}
-        />
+        {/* Drawing Canvas Sidebar */}
+        {showCanvas && (
+          <div style={{
+            width: '450px',
+            background: 'white',
+            borderRight: '1px solid #e5e7eb',
+            padding: '24px',
+            overflowY: 'auto',
+            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+            zIndex: 100,
+          }}>
+            <h2 style={{
+              fontSize: '20px',
+              fontWeight: 'bold',
+              color: '#111827',
+              marginBottom: '16px',
+            }}>
+              Draw Your Route
+            </h2>
+            <p style={{
+              fontSize: '14px',
+              color: '#4b5563',
+              marginBottom: '24px',
+            }}>
+              Draw any shape on the canvas. We&apos;ll generate waypoints and create a route in the Los Angeles area.
+            </p>
+            <DrawingCanvas
+              onDrawingComplete={handleCanvasDrawingComplete}
+              width={400}
+              height={400}
+            />
+          </div>
+        )}
+
+        {/* Map Container */}
+        <div style={{
+          flex: 1,
+          position: 'relative',
+        }}>
+          <RouteMap
+            routes={routes}
+            waypoints={showExample ? waypoints : []}
+            center={{ lat: 34.0522, lng: -118.2437 }}
+            zoom={10}
+            onRouteClick={handleRouteClick}
+            showWaypoints={showWaypoints && !drawingMode}
+            draggableMode={draggableMode && showWaypoints && !drawingMode}
+            onWaypointMove={handleWaypointMove}
+            enableDrawing={drawingMode}
+            onDrawingComplete={handleDrawingComplete}
+          />
+        </div>
       </div>
 
       {/* Info Panel */}
