@@ -603,14 +603,14 @@ export default function BarcodeCapture({ onBarcodeSubmit, disabled = false }: Ba
                   });
                   
                   // Extract digits and find best candidate
-                  const candidates = detectedCodes.map((code) => {
+                  const candidates = detectedCodes.map((code: { rawValue: string; format: any; }) => {
                     const digits = code.rawValue.replace(/\D/g, '');
                     return { digits, length: digits.length, format: code.format };
                   });
                   
                   addDebugLog('info', 'Native BarcodeDetector candidates', { candidates });
                   
-                  const upcEanCandidate = candidates.find((c) => [8, 12, 13, 14].includes(c.length));
+                  const upcEanCandidate = candidates.find((c: string | any[]) => [8, 12, 13, 14].includes(c.length));
                   const selected = upcEanCandidate || candidates[0];
                   if (selected && selected.digits) {
                     const totalNativeTime = performance.now() - nativeStartTime;
