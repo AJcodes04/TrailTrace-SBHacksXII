@@ -104,10 +104,10 @@ export default function DrawingCanvas({
       const distance = Math.sqrt(
         Math.pow(coords.x - lastPoint.x, 2) + Math.pow(coords.y - lastPoint.y, 2)
       )
-      // Only add point if it's at least 5 pixels away (reduce point density)
-      if (distance >= 5) {
-        pointsRef.current.push(coords)
-      }
+        // Only add point if it's at least 15 pixels away (more aggressive sampling)
+        if (distance >= 15) {
+          pointsRef.current.push(coords)
+        }
     } else {
       pointsRef.current.push(coords)
     }
@@ -128,31 +128,106 @@ export default function DrawingCanvas({
     }
   }
 
-  // Simple point simplification - takes every Nth point
-  // For better results, could use Ramer-Douglas-Peucker algorithm
-  const simplifyPoints = (pts: Array<{ x: number; y: number }>, threshold: number = 10): Array<{ x: number; y: number }> => {
+  // Improved point simplification with maximum waypoint limit
+  // Uses distance-based filtering and key point selection to limit vertices
+  const simplifyPoints = (pts: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> => {
     if (pts.length <= 2) return pts
+    if (pts.length <= 12) {
+      // If already small, just do basic distance filtering
+      return distanceFilter(pts, 20)
+    }
 
-    // Sample points to reduce density while preserving shape
-    const simplified: Array<{ x: number; y: number }> = [pts[0]]
+    const MAX_WAYPOINTS = 12 // Limit to 12 waypoints for optimal routing
+    
+    // Step 1: Distance-based filtering (remove very close points)
+    const filtered = distanceFilter(pts, 25)
+    
+    // Step 2: If still too many, select key turning points
+    if (filtered.length <= MAX_WAYPOINTS) {
+      return filtered
+    }
 
+    // Step 3: Select key points based on angle changes (turning points)
+    const keyPoints = selectKeyPoints(filtered, MAX_WAYPOINTS)
+    
+    return keyPoints
+  }
+
+  // Distance-based filtering
+  const distanceFilter = (pts: Array<{ x: number; y: number }>, threshold: number): Array<{ x: number; y: number }> => {
+    if (pts.length <= 2) return pts
+    
+    const filtered: Array<{ x: number; y: number }> = [pts[0]]
+    
     for (let i = 1; i < pts.length - 1; i++) {
-      const prev = simplified[simplified.length - 1]
+      const prev = filtered[filtered.length - 1]
       const curr = pts[i]
       const distance = Math.sqrt(
         Math.pow(curr.x - prev.x, 2) + Math.pow(curr.y - prev.y, 2)
       )
-
-      // Include point if it's far enough from previous point
+      
       if (distance >= threshold) {
-        simplified.push(curr)
+        filtered.push(curr)
       }
     }
+    
+    filtered.push(pts[pts.length - 1])
+    return filtered
+  }
 
-    // Always include the last point
-    simplified.push(pts[pts.length - 1])
-
-    return simplified
+  // Select key points based on angle changes (corners/turns)
+  const selectKeyPoints = (pts: Array<{ x: number; y: number }>, maxPoints: number): Array<{ x: number; y: number }> => {
+    if (pts.length <= maxPoints) return pts
+    
+    const keyPoints: Array<{ x: number; y: number }> = [pts[0]] // Always include first
+    const angles: Array<{ index: number; angle: number }> = []
+    
+    // Calculate angle change at each point
+    for (let i = 1; i < pts.length - 1; i++) {
+      const prev = pts[i - 1]
+      const curr = pts[i]
+      const next = pts[i + 1]
+      
+      // Calculate vectors
+      const v1x = curr.x - prev.x
+      const v1y = curr.y - prev.y
+      const v2x = next.x - curr.x
+      const v2y = next.y - curr.y
+      
+      // Calculate angle between vectors
+      const dot = v1x * v2x + v1y * v2y
+      const mag1 = Math.sqrt(v1x * v1x + v1y * v1y)
+      const mag2 = Math.sqrt(v2x * v2x + v2y * v2y)
+      
+      if (mag1 > 0 && mag2 > 0) {
+        const cosAngle = dot / (mag1 * mag2)
+        const clamped = Math.max(-1, Math.min(1, cosAngle))
+        const angle = Math.acos(clamped) * (180 / Math.PI)
+        angles.push({ index: i, angle })
+      }
+    }
+    
+    // Sort by angle (sharpest turns first)
+    angles.sort((a, b) => b.angle - a.angle)
+    
+    // Select top turning points
+    const selectedIndices = new Set<number>([0, pts.length - 1]) // Always include first and last
+    for (let i = 0; i < Math.min(angles.length, maxPoints - 2); i++) {
+      selectedIndices.add(angles[i].index)
+    }
+    
+    // If we still need more points, add evenly spaced ones
+    if (selectedIndices.size < maxPoints) {
+      const step = Math.floor(pts.length / (maxPoints - selectedIndices.size))
+      for (let i = step; i < pts.length - 1; i += step) {
+        if (selectedIndices.size >= maxPoints) break
+        selectedIndices.add(i)
+      }
+    }
+    
+    // Build result array in order
+    const sortedIndices = Array.from(selectedIndices).sort((a, b) => a - b)
+    return sortedIndices.map(idx => pts[idx])
   }
 
   return (
