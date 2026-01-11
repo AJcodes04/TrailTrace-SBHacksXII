@@ -228,7 +228,7 @@ function DrawingController({
 export default function RouteMap({
   routes = [],
   waypoints = [],
-  center = { lat: 34.0522, lng: -118.2437 }, // Los Angeles area - center of Southern California
+  center = { lat: 34.0522, lng: -118.2437 }, // Los Angeles area
   zoom = 10,
   onRouteClick,
   showWaypoints = true,
