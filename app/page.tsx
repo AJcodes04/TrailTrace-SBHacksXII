@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import Header from '@/components/Header'
 
 interface LandingPageProps {
   onSignIn: () => void
@@ -29,25 +30,12 @@ function LandingPage({ onSignIn }: LandingPageProps) {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
+      {/* Header */}
+      <Header />
+      
       <div className="flex flex-col lg:flex-row bg-stone-50 dark:bg-forest-900 text-forest-900 dark:text-stone-50">
         {/* Sidebar - Fixed on desktop */}
-        <aside className="w-full lg:w-64 lg:h-screen lg:sticky lg:top-0 bg-white dark:bg-forest-800 border-b lg:border-b-0 lg:border-r border-forest-200 dark:border-forest-700 flex flex-col z-50">
-          {/* Logo */}
-          <div className="p-6 border-b border-forest-200 dark:border-forest-700">
-            <div className="relative w-32 h-16 mb-3">
-              <Image
-                src="/images/logo.png"
-                alt="TrailTrace Logo"
-                fill
-                className="object-contain"
-                priority
-              />
-            </div>
-            <p className="text-sm text-forest-600 dark:text-forest-300 font-medium">
-              Draw your path. Run your route.
-            </p>
-          </div>
-
+        <aside className="w-full lg:w-64 lg:h-[calc(100vh-4rem)] lg:sticky lg:top-16 bg-white dark:bg-forest-800 border-b lg:border-b-0 lg:border-r border-forest-200 dark:border-forest-700 flex flex-col z-50">
           {/* Navigation */}
           <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
             <button

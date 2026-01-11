@@ -3,12 +3,11 @@
 import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
 import type { Route, Coordinate } from '@/types/route'
 import { snapToRoads } from '@/utils/routeHelpers'
 import { canvasToGeographicFromStartPoint } from '@/utils/drawingHelpers'
 import DrawingCanvas from '@/components/DrawingCanvas'
-import AuthWidget from '@/components/AuthWidget'
+import Header from '@/components/Header'
 import { auth } from '@/lib/firebaseClient'
 import { onAuthStateChanged } from 'firebase/auth'
 
@@ -203,46 +202,7 @@ export default function MapPage() {
   return (
     <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-white dark:bg-forest-800 border-b border-forest-200 dark:border-forest-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push('/')}
-                className="flex items-center gap-3 hover:opacity-80 transition-opacity"
-              >
-                <div className="relative w-24 h-12">
-                  <Image
-                    src="/images/logo.png"
-                    alt="TrailTrace Logo"
-                    fill
-                    className="object-contain"
-                    priority
-                  />
-                </div>
-                <p className="hidden sm:block text-sm text-forest-600 dark:text-forest-300 font-medium">
-                  Draw your path. Run your route.
-                </p>
-              </button>
-            </div>
-            
-            {/* Auth Widget */}
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.push('/')}
-                className="px-4 py-2 bg-forest-100 dark:bg-forest-700 hover:bg-forest-200 dark:hover:bg-forest-600 text-forest-700 dark:text-forest-200 rounded-lg font-semibold text-sm transition-colors"
-              >
-                Home
-              </button>
-              <AuthWidget
-                onSignOut={handleAuthSignOut}
-                variant="compact"
-              />
-            </div>
-          </div>
-        </div>
-      </header>
+      <Header showHomeButton onSignOut={handleAuthSignOut} />
 
       <div className="flex flex-col lg:flex-row bg-stone-50 dark:bg-forest-900 text-forest-900 dark:text-stone-50 h-[calc(100vh-4rem)]">
         {/* Sidebar - Fixed on desktop */}
