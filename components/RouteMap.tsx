@@ -27,6 +27,9 @@ interface RouteMapProps {
   onWaypointMove?: (index: number, newPosition: Coordinate) => void // Callback when a waypoint is moved
   enableDrawing?: boolean // Enable drawing mode
   onDrawingComplete?: (coordinates: Coordinate[]) => void // Callback when user finishes drawing
+  enableStartPointSelection?: boolean // Enable start point selection mode
+  onStartPointSelected?: (coordinate: Coordinate) => void // Callback when user selects start point
+  startPointMarker?: Coordinate | null // Show a marker for the selected start point
 }
 
 /**
@@ -117,6 +120,43 @@ function MapBoundsController({ routes, waypoints }: { routes?: Route[], waypoint
       map.fitBounds(bounds, { padding: [50, 50] })
     }
   }, [routes, waypoints, map])
+
+  return null
+}
+
+/**
+ * Component to handle start point selection on the map
+ */
+function StartPointSelector({ 
+  enabled, 
+  onStartPointSelected 
+}: { 
+  enabled?: boolean
+  onStartPointSelected?: (coordinate: Coordinate) => void 
+}) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (!enabled || !onStartPointSelected) return
+
+    const handleMapClick = (e: L.LeafletMouseEvent) => {
+      const coordinate: Coordinate = {
+        lat: e.latlng.lat,
+        lng: e.latlng.lng,
+      }
+      onStartPointSelected(coordinate)
+    }
+
+    map.on('click', handleMapClick)
+
+    // Change cursor to indicate clickable
+    map.getContainer().style.cursor = 'crosshair'
+
+    return () => {
+      map.off('click', handleMapClick)
+      map.getContainer().style.cursor = ''
+    }
+  }, [map, enabled, onStartPointSelected])
 
   return null
 }
@@ -234,9 +274,11 @@ export default function RouteMap({
   showWaypoints = true,
   draggableMode = false,
   onWaypointMove,
-
   enableDrawing = false,
   onDrawingComplete,
+  enableStartPointSelection = false,
+  onStartPointSelected,
+  startPointMarker = null,
 }: RouteMapProps) {
   
   // Default route color and style
@@ -330,6 +372,38 @@ export default function RouteMap({
       {/* Auto-fit bounds when routes or waypoints are provided */}
       {(routes.length > 0 || waypoints.length > 0) && (
         <MapBoundsController routes={routes} waypoints={waypoints} />
+      )}
+
+      {/* Start point selection marker */}
+      {startPointMarker && (
+        <Marker
+          position={[startPointMarker.lat, startPointMarker.lng]}
+          icon={L.divIcon({
+            className: 'start-point-marker',
+            html: `<div style="
+              width: 24px;
+              height: 24px;
+              background: #10b981;
+              border: 4px solid white;
+              border-radius: 50%;
+              box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+            "></div>`,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          })}
+        >
+          <Popup>
+            <div style={{ fontWeight: 'bold' }}>Start Point</div>
+          </Popup>
+        </Marker>
+      )}
+
+      {/* Start point selector */}
+      {enableStartPointSelection && (
+        <StartPointSelector 
+          enabled={enableStartPointSelection} 
+          onStartPointSelected={onStartPointSelected} 
+        />
       )}
 
       {/* Drawing controller */}
